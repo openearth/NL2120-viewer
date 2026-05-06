@@ -44,6 +44,7 @@
           </p>
         </flash-highlight>
         <flash-highlight
+          v-if="props.requiresConfirmation"
           :enabled="isOpen && !confirmButtonDisabled"
           :flash-when-enabled="props.confirmFlashWhenEnabled"
         >
