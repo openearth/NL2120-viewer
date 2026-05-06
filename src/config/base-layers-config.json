@@ -1,0 +1,148 @@
+[
+    {
+        "id": "landuse:U2018_CLC2018_V2020_20u1_cog",
+        "name": "landuse",
+        "layer": "landuse:U2018_CLC2018_V2020_20u1_cog",
+        "url": "https://desirmed.openearth.eu/geoserver/landuse/wms?",
+        "format": "image/png"
+    },
+    {
+        "id": "region:nuts_2021_level_3",
+        "name": "nuts_2021",
+        "layer": "region:nuts_2021_level_3",
+        "url": "https://desirmed.openearth.eu/geoserver/gwc/service/wmts?",
+        "format": "application/vnd.mapbox-vector-tile",
+        "promoteId": "nuts_id",
+        "paint": {
+            "fill-color": [
+                "case",
+                [
+                    "boolean",
+                    [
+                        "feature-state",
+                        "selected"
+                    ],
+                    false
+                ],
+                "#ffcc00",
+                [
+                    "case",
+                    [
+                        "boolean",
+                        [
+                            "feature-state",
+                            "hover"
+                        ],
+                        false
+                    ],
+                    "#ffeb3b",
+                    "transparent"
+                ]
+            ],
+            "fill-opacity": [
+                "case",
+                [
+                    "boolean",
+                    [
+                        "feature-state",
+                        "selected"
+                    ],
+                    false
+                ],
+                1,
+                [
+                    "case",
+                    [
+                        "boolean",
+                        [
+                            "feature-state",
+                            "hover"
+                        ],
+                        false
+                    ],
+                    0.9,
+                    0.7
+                ]
+            ]
+        },
+        "vectorType": "fill",
+        "minZoom": 0
+    },
+    {
+        "id": "region:nuts_2021_level_3",
+        "name": "nuts_2021",
+        "layer": "region:nuts_2021_level_3",
+        "url": "https://desirmed.openearth.eu/geoserver/gwc/service/wmts?",
+        "format": "image/png",
+        "minZoom": 0
+    },
+    {
+        "id": "topography:hybas_eu_lev12_v1c",
+        "name": "hydrobasins",
+        "layer": "topography:hybas_eu_lev12_v1c",
+        "url": "https://desirmed.openearth.eu/geoserver/gwc/service/wmts?",
+        "format": "application/vnd.mapbox-vector-tile",
+        "paint": {
+            "fill-color": [
+                "case",
+                [
+                    "boolean",
+                    [
+                        "feature-state",
+                        "selected"
+                    ],
+                    false
+                ],
+                "#ffcc00",
+                [
+                    "case",
+                    [
+                        "boolean",
+                        [
+                            "feature-state",
+                            "hover"
+                        ],
+                        false
+                    ],
+                    "#ffeb3b",
+                    "transparent"
+                ]
+            ],
+            "fill-opacity": [
+                "case",
+                [
+                    "boolean",
+                    [
+                        "feature-state",
+                        "selected"
+                    ],
+                    false
+                ],
+                1,
+                [
+                    "case",
+                    [
+                        "boolean",
+                        [
+                            "feature-state",
+                            "hover"
+                        ],
+                        false
+                    ],
+                    0.9,
+                    0.7
+                ]
+            ]
+        },
+        "vectorType": "fill",
+        "minZoom": 0
+    },
+    {
+        "id": "topography:hybas_eu_lev12_v1c",
+        "name": "hydrobasins",
+        "layer": "topography:hybas_eu_lev12_v1c",
+        "url": "https://desirmed.openearth.eu/geoserver/gwc/service/wmts?",
+        "format": "image/png",
+        "minZoom": 0
+    }
+]

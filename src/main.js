@@ -1,27 +1,25 @@
+/**
+ * main.js
+ *
+ * Bootstraps Vuetify and other plugins then mounts the App`
+ */
+
+// Composables
 import { createApp } from 'vue'
-import { createPinia } from 'pinia'
 
-import '@fontsource/roboto/100.css'
-import '@fontsource/roboto/300.css'
-import '@fontsource/roboto/400.css'
-import '@fontsource/roboto/500.css'
-import '@fontsource/roboto/700.css'
-import '@fontsource/roboto/900.css'
+// Plugins
+import { registerPlugins } from '@/plugins'
 
-/* optional italic styles */
-import '@fontsource/roboto/100-italic.css'
-import '@fontsource/roboto/300-italic.css'
-import '@fontsource/roboto/400-italic.css'
-import '@fontsource/roboto/500-italic.css'
-import '@fontsource/roboto/700-italic.css'
-import '@fontsource/roboto/900-italic.css'
-
+// Components
 import App from './App.vue'
-import router from './router'
+
+import 'mapbox-gl/dist/mapbox-gl.css'
+
+// Styles
+import 'unfonts.css'
 
 const app = createApp(App)
 
-app.use(createPinia())
-app.use(router)
+registerPlugins(app)
 
 app.mount('#app')
