@@ -22,7 +22,7 @@
                 "id": "nbs_portofolio:longlistlocs",
                 "name": "NbS locaties",
                 "active": true,
-                "clickable": false
+                "clickable": true
               }
             ]
           }
