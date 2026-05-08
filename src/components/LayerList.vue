@@ -29,7 +29,7 @@
         class="mt-0"
       />
       <layer-attribute-filter
-        v-if="layer.attributeFilter"
+        v-if="layer.attributeFilter && (mapStore.layerVisibility[layer.id] ?? false)"
         :layer-id="layer.id"
         v-bind="layer.attributeFilter"
       />
