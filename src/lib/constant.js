@@ -1,5 +1,5 @@
-export const MAP_CENTER = [ 7, 47 ]
-export const MAP_ZOOM = 4
+export const MAP_CENTER = [ 5.3, 52.2 ]
+export const MAP_ZOOM = 6.7
 
 export const MAP_BASELAYERS = [
   { title: 'Light', uri: 'mapbox://styles/mapbox/light-v11' },
