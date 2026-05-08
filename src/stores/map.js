@@ -33,6 +33,7 @@ export const useMapStore = defineStore('map', {
     staticLayerIds: layersConfig.map(cfg => cfg.id),
     mapboxLayers: [],
     layerVisibility: {},
+    layerFilters: {},
     layerClickableByStep: {},
     activeRegion: null,
     activeRegionId: null,
@@ -43,7 +44,8 @@ export const useMapStore = defineStore('map', {
       const visible = []
       for (const layer of state.mapboxLayers) {
         if (state.layerVisibility[layer.id] === true) {
-          visible.push(layer)
+          const filter = state.layerFilters[layer.id]
+          visible.push(filter ? { ...layer, filter } : layer)
         } else if (layer.id.endsWith('_raster')) {
           // Raster layers with '_raster' suffix are shown when their base ID is visible
           const baseId = layer.id.replace('_raster', '')
@@ -172,6 +174,15 @@ export const useMapStore = defineStore('map', {
     setLayerVisibility (layerId, isVisible) {
       this.layerVisibility[layerId] = isVisible
     },
+
+    setLayerFilter (layerId, filter) {
+      if (!layerId) return
+      if (filter == null) {
+        delete this.layerFilters[layerId]
+        return
+      }
+      this.layerFilters[layerId] = filter
+    },
     
     setActiveRegion (layerId, feature, regionIdProperty = null) {
       this.activeRegion = {
@@ -252,6 +263,7 @@ export const useMapStore = defineStore('map', {
     resetWorkflowState () {
       this.clearDynamicLayers()
       this.layerVisibility = {}
+      this.layerFilters = {}
       this.layerClickableByStep = {}
       this.clearActiveRegion()
     },

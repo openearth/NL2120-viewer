@@ -16,21 +16,18 @@
         "layer": "nbs_portofolio:longlistlocs",
         "url": "https://nl2120.openearth.nl/geoserver/gwc/service/wmts?",
         "format": "application/vnd.mapbox-vector-tile",
-        "vectorType": "circle",
+        "vectorType": "symbol",
+        "layout": {
+            "text-field": "■",
+            "text-size": 20,
+            "text-allow-overlap": true
+        },
         "paint": {
-            "circle-radius": 8,
-            "circle-color": "transparent",
-            "circle-stroke-color": "transparent"
+            "text-color": "#e53935",
+            "text-halo-color": "#ffffff",
+            "text-halo-width": 1
         },
         "promoteId": "id",
-        "minZoom": 0
-    },
-    {
-        "id": "nbs_portofolio:longlistlocs",
-        "name": "nbs_portofolio:longlistlocs",
-        "layer": "nbs_portofolio:longlistlocs",
-        "url": "https://nl2120.openearth.nl/geoserver/gwc/service/wmts?",
-        "format": "image/png",
         "minZoom": 0
     }
 ]

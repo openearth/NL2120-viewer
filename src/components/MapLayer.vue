@@ -11,7 +11,7 @@
 
 <script setup>
   import { MapboxLayer, useMap } from '@studiometa/vue-mapbox-gl'
-  import { computed, ref, unref, onMounted, onUnmounted, nextTick } from 'vue'
+  import { computed, ref, unref, onMounted, onUnmounted, nextTick, watch } from 'vue'
   import { useMapStore } from '@/stores/map'
 
   const props = defineProps({
@@ -177,4 +177,14 @@
     }
     if (mapInstance) mapInstance.getCanvas().style.cursor = ''
   }
+
+  watch(
+    () => props.layer?.filter,
+    (nextFilter) => {
+      const mapInstance = unref(map)
+      const id = layerId.value
+      if (!mapInstance || !id || !mapInstance.getLayer(id)) return
+      mapInstance.setFilter(id, nextFilter ?? null)
+    },
+  )
 </script>

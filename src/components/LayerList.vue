@@ -28,6 +28,11 @@
         :flash-when-enabled="layer.flashWhenEnabled ?? false"
         class="mt-0"
       />
+      <layer-attribute-filter
+        v-if="layer.attributeFilter"
+        :layer-id="layer.id"
+        v-bind="layer.attributeFilter"
+      />
     </template>
   </div>
 </template>
@@ -37,6 +42,7 @@
   import { useAppStore } from '@/stores/app'
   import { useMapStore } from '@/stores/map'
   import ActiveFeatureProperties from '@/components/ActiveFeatureProperties.vue'
+  import LayerAttributeFilter from '@/components/LayerAttributeFilter.vue'
 
   const props = defineProps({
     layers: { type: Array, required: true },

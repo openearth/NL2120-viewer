@@ -22,7 +22,13 @@
                 "id": "nbs_portofolio:longlistlocs",
                 "name": "NbS locaties",
                 "active": true,
-                "clickable": true
+                "clickable": true,
+                "attributeFilter": {
+                  "title": "Filter NbS type",
+                  "attributeKey": "type_nbs",
+                  "delimiter": ";",
+                  "wfsUrl": "https://nl2120.openearth.nl/geoserver/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=nbs_portofolio:longlistlocs&outputFormat=application/json"
+                }
               }
             ]
           }
