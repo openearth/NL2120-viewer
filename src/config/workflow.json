@@ -19,15 +19,15 @@
                 "clickable": false
               },
               {
-                "id": "nbs_portofolio:longlistlocs",
+                "id": "longlist_1_1:1_1_longlist",
                 "name": "NbS locaties",
                 "active": true,
                 "clickable": true,
                 "attributeFilter": {
-                  "title": "Filter NbS type",
-                  "attributeKey": "type_nbs",
+                  "title": "Filter landschapstype en NbS",
+                  "attributeKey": "landschap_filter",
                   "delimiter": ";",
-                  "wfsUrl": "https://nl2120.openearth.nl/geoserver/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=nbs_portofolio:longlistlocs&outputFormat=application/json"
+                  "wfsUrl": "https://nl2120.openearth.nl/geoserver/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=longlist_1_1:1_1_longlist&outputFormat=application/json"
                 }
               }
             ]
