@@ -17,6 +17,12 @@
         "url": "https://nl2120.openearth.nl/geoserver/gwc/service/wmts?",
         "format": "application/vnd.mapbox-vector-tile",
         "promoteId": "fid",
+        "bbox": [
+            4.034419683668031,
+            50.75036749286343,
+            6.822046610714709,
+            53.24472720689029
+        ],
         "layout": {
             "text-field": "■",
             "text-size": 20,

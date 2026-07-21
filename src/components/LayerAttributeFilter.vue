@@ -144,7 +144,8 @@
     }
 
     if (selected.length === 0) {
-      mapStore.setLayerFilter(props.layerId, [ '==', 1, 0 ])
+      // Empty `any` evaluates to false → hide all features
+      mapStore.setLayerFilter(props.layerId, [ 'any' ])
       return
     }
 
