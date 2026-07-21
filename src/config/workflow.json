@@ -26,6 +26,8 @@
                 "attributeFilter": {
                   "title": "Filter landschapstype en NbS",
                   "attributeKey": "landschap_filter",
+                  "secondaryAttributeKey": "nbs_prio",
+                  "defaultCollapse": true,
                   "delimiter": ";",
                   "wfsUrl": "https://nl2120.openearth.nl/geoserver/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=longlist_1_1:1_1_longlist&outputFormat=application/json"
                 }
