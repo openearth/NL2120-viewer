@@ -11,6 +11,52 @@
         }
     },
     {
+        "id": "longlist_1_1:longlist_nl2120_gebieden",
+        "name": "longlist_1_1:longlist_nl2120_gebieden",
+        "layer": "longlist_1_1:longlist_nl2120_gebieden",
+        "url": "https://nl2120.openearth.nl/geoserver/gwc/service/wmts?",
+        "format": "application/vnd.mapbox-vector-tile",
+        "promoteId": "fid",
+        "showInLegend": false,
+        "bbox": [
+            4.034419536590576,
+            50.7503662109375,
+            6.822046756744385,
+            53.244728088378906
+        ],
+        "paint": {
+            "fill-color": "#9e9e9e",
+            "fill-opacity": 0.3
+        },
+        "vectorType": "fill",
+        "minZoom": 0
+    },
+    {
+        "id": "longlist_1_1:longlist_nl2120_gebieden_outline",
+        "name": "longlist_1_1:longlist_nl2120_gebieden_outline",
+        "layer": "longlist_1_1:longlist_nl2120_gebieden",
+        "url": "https://nl2120.openearth.nl/geoserver/gwc/service/wmts?",
+        "format": "application/vnd.mapbox-vector-tile",
+        "promoteId": "fid",
+        "showInLegend": false,
+        "bbox": [
+            4.034419536590576,
+            50.7503662109375,
+            6.822046756744385,
+            53.244728088378906
+        ],
+        "paint": {
+            "line-color": "#f44336",
+            "line-width": 3,
+            "line-dasharray": [
+                2,
+                1
+            ]
+        },
+        "vectorType": "line",
+        "minZoom": 0
+    },
+    {
         "id": "longlist_1_1:1_1_longlist",
         "name": "longlist_1_1:1_1_longlist",
         "layer": "longlist_1_1:1_1_longlist",

@@ -61,6 +61,15 @@
                       "title": "Uitgewerkte leercasus (indien aanwezig)"
                     }
                   ]
+                },
+                "relatedGeometry": {
+                  "layerId": "longlist_1_1:longlist_nl2120_gebieden",
+                  "outlineLayerId": "longlist_1_1:longlist_nl2120_gebieden_outline",
+                  "sourceAttribute": "fid",
+                  "targetAttribute": "fid",
+                  "fitBounds": true,
+                  "showOnHover": true,
+                  "showOnHoverWithSelection": true
                 }
               }
             ]

@@ -37,6 +37,8 @@ export const useMapStore = defineStore('map', {
     layerClickableByStep: {},
     activeRegion: null,
     activeRegionId: null,
+    /** Hovered vector feature { layerId, properties, feature } — used e.g. for relatedGeometry preview */
+    hoveredFeature: null,
   }),
   
   getters: {
@@ -82,6 +84,9 @@ export const useMapStore = defineStore('map', {
           seenIds.add(layerId)
           
           const layerConfig = state.layersConfig.find(config => config.id === layerId)
+          if (layerConfig?.showInLegend === false) {
+            continue
+          }
           if (layerConfig && layerConfig.url && layerConfig.layer) {
             visible.push({
               id: layerId,
@@ -201,6 +206,22 @@ export const useMapStore = defineStore('map', {
       this.activeRegionId = null
     },
 
+    setHoveredFeature (layerId, feature) {
+      if (!layerId || !feature) {
+        this.hoveredFeature = null
+        return
+      }
+      this.hoveredFeature = {
+        layerId,
+        properties: feature.properties || {},
+        feature,
+      }
+    },
+
+    clearHoveredFeature () {
+      this.hoveredFeature = null
+    },
+
     addDynamicLayer (layerConfig) {
       const existing = this.mapboxLayers.find(l => l.id === layerConfig.id)
       if (existing) return
@@ -266,6 +287,7 @@ export const useMapStore = defineStore('map', {
       this.layerFilters = {}
       this.layerClickableByStep = {}
       this.clearActiveRegion()
+      this.clearHoveredFeature()
     },
   },
 })

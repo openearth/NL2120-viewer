@@ -159,6 +159,7 @@
     hoveredSource.value = source
     hoveredSourceLayer.value = sourceLayerName
     setHover(mapInstance, source, sourceLayerName, feature.id, true)
+    mapStore.setHoveredFeature(layerId.value, feature)
   }
 
   function onMouseenter() {
@@ -174,6 +175,9 @@
       hoveredId.value = null
       hoveredSource.value = null
       hoveredSourceLayer.value = null
+    }
+    if (mapStore.hoveredFeature?.layerId === layerId.value) {
+      mapStore.clearHoveredFeature()
     }
     if (mapInstance) mapInstance.getCanvas().style.cursor = ''
   }

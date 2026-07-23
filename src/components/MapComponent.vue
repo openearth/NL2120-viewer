@@ -14,7 +14,11 @@
         :layer="layer"
         @click="onFeatureClick"
       />
-      <MapZoomControl :feature="mapStore.activeRegion?.feature" />
+      <RelatedGeometry />
+      <MapZoomControl
+        v-if="!relatedGeometryHandlesZoom"
+        :feature="mapStore.activeRegion?.feature"
+      />
       <MapboxNavigationControl position="bottom-right" />
     </mapbox-map>
   </div>
@@ -27,13 +31,21 @@
   import { useAppStore } from '@/stores/app'
   import MapLayer from '@/components/MapLayer.vue'
   import MapZoomControl from '@/components/MapZoomControl.vue'
+  import RelatedGeometry from '@/components/RelatedGeometry.vue'
+  import { findWorkflowLayer } from '@/lib/find-workflow-layer'
   import { computed, ref } from 'vue'
+
   const mapStore = useMapStore()
   const appStore = useAppStore()
   const accessToken = import.meta.env.VITE_MAPBOX_TOKEN
   const activeStyleTitle = ref(MAP_BASELAYER_DEFAULT.title)
   const activeStyleUri = computed(() => MAP_BASELAYERS.find(style => style.title === activeStyleTitle.value).uri)
   const mapInstance = ref(null)
+
+  const relatedGeometryHandlesZoom = computed(() => {
+    const related = findWorkflowLayer(mapStore.activeRegion?.layerId)?.relatedGeometry
+    return Boolean(related && related.fitBounds !== false)
+  })
 
   function onMapCreated (map) {
     mapInstance.value = map

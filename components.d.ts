@@ -23,6 +23,7 @@ declare module 'vue' {
     MapZoomControl: typeof import('./src/components/MapZoomControl.vue')['default']
     NavigationDrawer: typeof import('./src/components/NavigationDrawer.vue')['default']
     NumberInput: typeof import('./src/components/NumberInput.vue')['default']
+    RelatedGeometry: typeof import('./src/components/RelatedGeometry.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SelectionList: typeof import('./src/components/SelectionList.vue')['default']
