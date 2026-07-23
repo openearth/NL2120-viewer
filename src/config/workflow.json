@@ -1,6 +1,7 @@
 {
   "logo": "/nl2120_logo.png",
   "initialSetup": {},
+  "legendStack": "horizontal",
   "steps": [
     {
       "id": "layerViewer",
@@ -30,6 +31,36 @@
                   "defaultCollapse": true,
                   "delimiter": ";",
                   "wfsUrl": "https://nl2120.openearth.nl/geoserver/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=longlist_1_1:1_1_longlist&outputFormat=application/json"
+                },
+                "featureInfo": {
+                  "title": "Locatie-informatie",
+                  "emptyValue": "—",
+                  "fields": [
+                    {
+                      "attribute": "naam",
+                      "title": "Naam"
+                    },
+                    {
+                      "attribute": "landschapscluster",
+                      "title": "Landschapstypen"
+                    },
+                    {
+                      "attribute": "omschrijving",
+                      "title": "Omschrijving"
+                    },
+                    {
+                      "attribute": "casus_nl2120",
+                      "title": "Toegevoegde waarde voor NL2120"
+                    },
+                    {
+                      "attribute": "url",
+                      "title": "Meer weten?"
+                    },
+                    {
+                      "attribute": "link_art",
+                      "title": "Uitgewerkte leercasus (indien aanwezig)"
+                    }
+                  ]
                 }
               }
             ]

@@ -22,11 +22,13 @@
       <div
         v-show="showLegend"
         class="legend-panel"
+        :class="`legend-panel--${legendStack}`"
       >
         <v-card
           v-for="layer in visibleLayers"
           :key="layer.id"
-          class="legend-item-card mb-2"
+          class="legend-item-card"
+          :class="{ 'mb-2': legendStack === 'vertical' }"
           elevation="2"
           rounded="xl"
           max-width="300"
@@ -50,12 +52,12 @@
           <v-expand-transition>
             <v-card-text
               v-show="isLayerExpanded(layer.id)"
-              class="pa-3 pt-2"
+              class="pa-3 pt-2 legend-item-body"
             >
               <img
                 v-if="!failedImageIds.has(layer.id)"
                 class="legend-image"
-                :src="legendUrl(layer)"
+                :src="buildLegendUrl(layer)"
                 alt=""
                 @error="onImageError(layer.id)"
               >
@@ -71,68 +73,51 @@
   import { computed, ref, watch } from 'vue'
   import { useMapStore } from '@/stores/map'
   import buildLegendUrl from '@/lib/build-legend-url'
+  import { findWorkflowLayer } from '@/lib/find-workflow-layer'
   import navigationConfig from '@/config/workflow.json'
 
   const mapStore = useMapStore()
   const failedImageIds = ref(new Set())
   const showLegend = ref(true)
   const expandedLayers = ref(new Set())
-  
+
+  const legendStack = computed(() => {
+    return navigationConfig.legendStack === 'horizontal' ? 'horizontal' : 'vertical'
+  })
+
   const visibleLayers = computed(() => mapStore.visibleLayersWithConfig)
   const hasVisibleLayers = computed(() => visibleLayers.value.length > 0)
-  
+
   watch(hasVisibleLayers, (newValue) => {
     if (newValue) {
       showLegend.value = true
-      visibleLayers.value.forEach(layer => {
-        expandedLayers.value.add(layer.id)
-      })
+      const next = new Set(expandedLayers.value)
+      visibleLayers.value.forEach(layer => next.add(layer.id))
+      expandedLayers.value = next
     }
   })
-  
+
   watch(visibleLayers, (newLayers, oldLayers) => {
+    const next = new Set(expandedLayers.value)
     const oldIds = new Set(oldLayers?.map(l => l.id) || [])
     newLayers.forEach(layer => {
       if (!oldIds.has(layer.id)) {
-        expandedLayers.value.add(layer.id)
+        next.add(layer.id)
       }
     })
     const newIds = new Set(newLayers.map(l => l.id))
-    expandedLayers.value.forEach(id => {
+    next.forEach(id => {
       if (!newIds.has(id)) {
-        expandedLayers.value.delete(id)
+        next.delete(id)
       }
     })
+    expandedLayers.value = next
   })
 
-  function getLayerNameFromNavigation (layerId) {
-    for (const step of navigationConfig.steps) {
-      if (step.components) {
-        for (const component of step.components) {
-          if (component.component === 'LayerList' && component.componentProps?.layers) {
-            const layer = component.componentProps.layers.find(l => l.id === layerId)
-            if (layer) {
-              return layer.name
-            }
-          }
-        }
-      }
-    }
-    return null
-  }
-
   function getLayerName (layerId) {
-    const navName = getLayerNameFromNavigation(layerId)
-    if (navName) {
-      return navName
-    }
-    
-    const layer = visibleLayers.value.find(l => l.id === layerId)
-    return layer?.name || layerId
-  }
-
-  function legendUrl (layer) {
-    return buildLegendUrl(layer)
+    return findWorkflowLayer(layerId)?.name
+      || visibleLayers.value.find(l => l.id === layerId)?.name
+      || layerId
   }
 
   function toggleLegend () {
@@ -140,11 +125,13 @@
   }
 
   function toggleLayerLegend (layerId) {
-    if (expandedLayers.value.has(layerId)) {
-      expandedLayers.value.delete(layerId)
+    const next = new Set(expandedLayers.value)
+    if (next.has(layerId)) {
+      next.delete(layerId)
     } else {
-      expandedLayers.value.add(layerId)
+      next.add(layerId)
     }
+    expandedLayers.value = next
   }
 
   function isLayerExpanded (layerId) {
@@ -152,7 +139,9 @@
   }
 
   function onImageError (layerId) {
-    failedImageIds.value.add(layerId)
+    const next = new Set(failedImageIds.value)
+    next.add(layerId)
+    failedImageIds.value = next
   }
 </script>
 
@@ -169,10 +158,41 @@
 }
 
 .legend-panel {
+  display: flex;
+  align-items: flex-end;
+  /* Padding keeps elevation shadows inside the overflow box (otherwise they look cropped) */
+  padding: 8px;
+  margin: -8px;
+}
+
+.legend-panel--vertical {
+  flex-direction: column;
   max-height: calc(100vh - 200px);
+  overflow-x: hidden;
   overflow-y: auto;
+}
+
+.legend-panel--horizontal {
+  flex-direction: row-reverse;
+  flex-wrap: nowrap;
+  gap: 12px;
+  max-width: calc(100vw - 120px);
+  max-height: min(45vh, 360px);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.legend-panel--horizontal .legend-item-card {
+  flex: 0 0 auto;
+  max-height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+}
+
+.legend-panel--horizontal .legend-item-body {
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .legend-chevron {

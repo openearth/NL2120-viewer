@@ -187,4 +187,21 @@
       mapInstance.setFilter(id, nextFilter ?? null)
     },
   )
+
+  // Keep local highlight in sync when selection is cleared elsewhere (e.g. info panel close)
+  watch(
+    () => mapStore.activeRegion,
+    (region) => {
+      if (region != null && region.layerId === props.layer?.id) return
+      if (selectedId.value === null) return
+
+      const mapInstance = unref(map)
+      if (mapInstance && selectedSource.value != null && selectedSourceLayer.value != null) {
+        setHighlight(mapInstance, selectedSource.value, selectedSourceLayer.value, selectedId.value, false)
+      }
+      selectedId.value = null
+      selectedSource.value = null
+      selectedSourceLayer.value = null
+    },
+  )
 </script>

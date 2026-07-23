@@ -3,6 +3,7 @@
     <navigation-drawer />
     <v-main style="padding-inline: 0">
       <router-view />
+      <feature-info-panel />
       <layer-legend />
     </v-main>
   </v-app>
@@ -12,6 +13,7 @@
   import { onMounted } from 'vue'
   import NavigationDrawer from '@/components/NavigationDrawer.vue'
   import LayerLegend from '@/components/LayerLegend.vue'
+  import FeatureInfoPanel from '@/components/FeatureInfoPanel.vue'
   import workflowConfig from '@/config/workflow.json'
   import { useAppStore } from '@/stores/app'
   import { useMapStore } from '@/stores/map'
