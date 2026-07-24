@@ -4,9 +4,6 @@
     v-model="isOpen"
     class="info-dialog"
     :width="dialogWidth"
-    :scrim="true"
-    retain-focus
-    @update:model-value="onOpenChange"
   >
     <v-card
       class="info-dialog__card"
@@ -20,13 +17,12 @@
           variant="text"
           size="small"
           aria-label="Sluiten"
-          @click="closeAndRemember"
+          @click="isOpen = false"
         />
       </v-card-title>
 
       <v-card-text class="info-dialog__body">
-        <!-- Markdown is project-authored config content -->
-        <!-- eslint-disable-next-line vue/no-v-html -->
+        <!-- eslint-disable-next-line vue/no-v-html -- content is project-authored markdown config -->
         <div
           class="info-dialog__markdown"
           v-html="htmlContent"
@@ -38,7 +34,7 @@
         <v-btn
           color="primary"
           variant="tonal"
-          @click="closeAndRemember"
+          @click="isOpen = false"
         >
           {{ closeLabel }}
         </v-btn>
@@ -55,6 +51,7 @@
 
   const DEFAULT_STORAGE_KEY = 'nl2120-viewer:info-dialog-seen'
 
+  // Open markdown links in a new tab (marked default is same-tab).
   marked.use({
     renderer: {
       link ({ href, title, tokens }) {
@@ -73,35 +70,30 @@
     eager: true,
   })
 
-  const config = computed(() => workflowConfig.infoDialog ?? null)
-  const isFeatureEnabled = computed(() => config.value?.enabled === true)
+  const config = workflowConfig.infoDialog
+  const isFeatureEnabled = config?.enabled === true
+  const title = config?.title || 'Informatie'
+  const closeLabel = config?.closeLabel || 'Sluiten'
+  const dialogWidth = config?.width || '50vw'
+  const dialogHeight = config?.height || '70vh'
+  const remember = config?.remember || 'local'
+  const storageKey = config?.storageKey || DEFAULT_STORAGE_KEY
 
-  const title = computed(() => config.value?.title || 'Informatie')
-  const closeLabel = computed(() => config.value?.closeLabel || 'Sluiten')
-  const dialogWidth = computed(() => config.value?.width || '50vw')
-  const dialogHeight = computed(() => config.value?.height || '70vh')
-  const remember = computed(() => config.value?.remember || 'local')
-  const storageKey = computed(() => config.value?.storageKey || DEFAULT_STORAGE_KEY)
-
-  const markdownSource = computed(() => {
-    const fileName = config.value?.contentFile || 'info-dialog.md'
-    const key = Object.keys(mdModules).find(path => path.endsWith(`/${ fileName }`))
-    return key ? mdModules[key] : ''
-  })
-
-  const htmlContent = computed(() => {
-    if (!markdownSource.value) return ''
-    return marked.parse(markdownSource.value, { async: false })
-  })
+  const fileName = config?.contentFile || 'info-dialog.md'
+  const markdownPath = Object.keys(mdModules).find(path => path.endsWith(`/${ fileName }`))
+  const htmlContent = markdownPath
+    ? marked.parse(mdModules[markdownPath], { async: false })
+    : ''
 
   const isOpen = computed({
     get: () => appStore.infoDialogOpen,
     set: (value) => {
       if (value) {
         appStore.openInfoDialog()
-      } else {
-        appStore.closeInfoDialog()
+        return
       }
+      markInfoDialogSeen(storageKey, remember)
+      appStore.closeInfoDialog()
     },
   })
 
@@ -127,21 +119,10 @@
     }
   }
 
-  function closeAndRemember () {
-    markInfoDialogSeen(storageKey.value, remember.value)
-    appStore.closeInfoDialog()
-  }
-
-  function onOpenChange (value) {
-    if (!value) {
-      markInfoDialogSeen(storageKey.value, remember.value)
-    }
-  }
-
   onMounted(() => {
-    if (!isFeatureEnabled.value) return
-    if (config.value?.showOnStart !== true) return
-    if (hasSeenInfoDialog(storageKey.value, remember.value)) return
+    if (!isFeatureEnabled) return
+    if (config?.showOnStart !== true) return
+    if (hasSeenInfoDialog(storageKey, remember)) return
     appStore.openInfoDialog()
   })
 </script>
@@ -150,7 +131,6 @@
 .info-dialog__card {
   display: flex;
   flex-direction: column;
-  max-height: 70vh;
   overflow: hidden;
 }
 
@@ -205,8 +185,7 @@
 
 <!-- Unscoped: v-dialog teleports the overlay outside this component -->
 <style>
-.v-overlay.info-dialog .v-overlay__scrim,
-.v-overlay:has(.info-dialog) .v-overlay__scrim {
+.v-overlay.info-dialog .v-overlay__scrim {
   opacity: 1 !important;
   background: rgba(255, 255, 255, 0.10) !important;
   backdrop-filter: blur(6px) saturate(120%);
