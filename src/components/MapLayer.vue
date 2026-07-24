@@ -151,7 +151,9 @@
     const sourceLayerName = feature.sourceLayer ?? sourceLayer.value
     if (source == null || sourceLayerName == null) return
 
-    if (hoveredId.value !== null && hoveredSource.value != null && hoveredSourceLayer.value != null) {
+    const isNewHover = hoveredId.value !== feature.id
+
+    if (isNewHover && hoveredId.value !== null && hoveredSource.value != null && hoveredSourceLayer.value != null) {
       setHover(mapInstance, hoveredSource.value, hoveredSourceLayer.value, hoveredId.value, false)
     }
 
@@ -159,7 +161,10 @@
     hoveredSource.value = source
     hoveredSourceLayer.value = sourceLayerName
     setHover(mapInstance, source, sourceLayerName, feature.id, true)
-    mapStore.setHoveredFeature(layerId.value, feature)
+
+    if (isNewHover) {
+      mapStore.setHoveredFeature(layerId.value, feature)
+    }
   }
 
   function onMouseenter() {

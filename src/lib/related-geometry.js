@@ -1,6 +1,6 @@
-/**
- * Resolve Mapbox layer ids controlled by a relatedGeometry config.
- */
+const DEFAULT_JOIN_ATTRIBUTE = 'fid'
+
+/** Mapbox layer ids controlled by a relatedGeometry config (fill + optional outline). */
 export function resolveRelatedGeometryLayerIds (relatedGeometry) {
   if (!relatedGeometry?.layerId) return []
   const ids = [ relatedGeometry.layerId ]
@@ -10,16 +10,29 @@ export function resolveRelatedGeometryLayerIds (relatedGeometry) {
   return ids
 }
 
-/**
- * Build a Mapbox filter that matches targetAttribute to one or more join values.
- */
-export function buildRelatedGeometryFilter (targetAttribute, joinValueOrValues) {
-  const values = [ ]
-    .concat(joinValueOrValues)
-    .filter(value => value != null && value !== '')
-    .map(value => String(value))
+export function getRelatedJoinAttribute (relatedGeometry, which = 'source') {
+  if (which === 'target') {
+    return relatedGeometry?.targetAttribute || DEFAULT_JOIN_ATTRIBUTE
+  }
+  return relatedGeometry?.sourceAttribute || DEFAULT_JOIN_ATTRIBUTE
+}
 
-  const uniqueValues = [ ...new Set(values) ]
+export function getRelatedJoinValue (region, sourceAttribute) {
+  if (!region) return null
+  const value = region.properties?.[sourceAttribute] ?? region.feature?.id
+  if (value == null || value === '') return null
+  return value
+}
+
+/** Mapbox filter matching targetAttribute to one or more join values. */
+export function buildRelatedGeometryFilter (targetAttribute, joinValueOrValues) {
+  const uniqueValues = [ ...new Set(
+    []
+      .concat(joinValueOrValues)
+      .filter(value => value != null && value !== '')
+      .map(value => String(value)),
+  ) ]
+
   if (uniqueValues.length === 0) return [ 'any' ]
 
   const conditions = uniqueValues.map(value => [
@@ -31,9 +44,7 @@ export function buildRelatedGeometryFilter (targetAttribute, joinValueOrValues) 
   return conditions.length === 1 ? conditions[0] : [ 'any', ...conditions ]
 }
 
-/**
- * Build a WFS GetFeature URL for a layer config filtered by attribute = value.
- */
+/** WFS GetFeature URL for a layer config filtered by attribute = value. */
 export function buildRelatedGeometryWfsUrl (layerConfig, attribute, value) {
   if (!layerConfig?.url || !layerConfig?.layer || attribute == null || value == null) {
     return null
@@ -59,9 +70,6 @@ export function buildRelatedGeometryWfsUrl (layerConfig, attribute, value) {
 }
 
 function formatCqlValue (value) {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return String(value)
-  }
   const text = String(value).replace(/'/g, "''")
   if (/^-?\d+(\.\d+)?$/.test(text)) {
     return text

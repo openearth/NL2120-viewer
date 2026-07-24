@@ -11,6 +11,8 @@
   import {
     buildRelatedGeometryFilter,
     buildRelatedGeometryWfsUrl,
+    getRelatedJoinAttribute,
+    getRelatedJoinValue,
     resolveRelatedGeometryLayerIds,
   } from '@/lib/related-geometry'
 
@@ -49,45 +51,38 @@
     lastFitJoinValue = null
   }
 
-  function getJoinValue (region, sourceAttribute) {
-    return region?.properties?.[sourceAttribute] ?? region?.feature?.id
+  function relatedConfigFor (region) {
+    if (!region?.layerId) return null
+    return findWorkflowLayer(region.layerId)?.relatedGeometry ?? null
   }
 
   /**
-   * Collect join values to show: selection always; hover when enabled
-   * (alone, or alongside selection if showOnHoverWithSelection).
+   * Join values to display: selection first; hover when showOnHover /
+   * showOnHoverWithSelection allow it.
    */
   function resolveDisplayContext () {
     const selected = mapStore.activeRegion
     const hovered = mapStore.hoveredFeature
-    const selectedConfig = selected?.layerId
-      ? findWorkflowLayer(selected.layerId)?.relatedGeometry
-      : null
-    const hoveredConfig = hovered?.layerId
-      ? findWorkflowLayer(hovered.layerId)?.relatedGeometry
-      : null
+    const selectedConfig = relatedConfigFor(selected)
+    const hoveredConfig = relatedConfigFor(hovered)
 
     if (selectedConfig) {
-      const sourceAttribute = selectedConfig.sourceAttribute || 'fid'
-      const joinValues = []
-      const selectedJoin = getJoinValue(selected, sourceAttribute)
-      if (selectedJoin != null && selectedJoin !== '') {
-        joinValues.push(selectedJoin)
-      }
+      const sourceAttribute = getRelatedJoinAttribute(selectedConfig, 'source')
+      const selectedJoin = getRelatedJoinValue(selected, sourceAttribute)
+      const joinValues = selectedJoin != null ? [ selectedJoin ] : []
 
-      const allowHoverAlongside =
+      const canHoverAlongside =
         selectedConfig.showOnHover === true &&
         selectedConfig.showOnHoverWithSelection === true &&
-        hoveredConfig?.showOnHover === true &&
-        hovered?.layerId
+        hoveredConfig?.layerId === selectedConfig.layerId
 
-      if (allowHoverAlongside) {
-        const hoverJoin = getJoinValue(hovered, hoveredConfig.sourceAttribute || 'fid')
-        if (hoverJoin != null && hoverJoin !== '' && String(hoverJoin) !== String(selectedJoin)) {
-          // Only combine when both point at the same related geometry layer
-          if (hoveredConfig.layerId === selectedConfig.layerId) {
-            joinValues.push(hoverJoin)
-          }
+      if (canHoverAlongside) {
+        const hoverJoin = getRelatedJoinValue(
+          hovered,
+          getRelatedJoinAttribute(hoveredConfig, 'source'),
+        )
+        if (hoverJoin != null && String(hoverJoin) !== String(selectedJoin)) {
+          joinValues.push(hoverJoin)
         }
       }
 
@@ -102,9 +97,11 @@
     }
 
     if (hoveredConfig?.showOnHover) {
-      const sourceAttribute = hoveredConfig.sourceAttribute || 'fid'
-      const hoverJoin = getJoinValue(hovered, sourceAttribute)
-      if (hoverJoin == null || hoverJoin === '') return null
+      const hoverJoin = getRelatedJoinValue(
+        hovered,
+        getRelatedJoinAttribute(hoveredConfig, 'source'),
+      )
+      if (hoverJoin == null) return null
 
       return {
         relatedGeometry: hoveredConfig,
@@ -137,7 +134,7 @@
     )
     const wfsUrl = buildRelatedGeometryWfsUrl(
       layerConfig,
-      relatedGeometry.targetAttribute || 'fid',
+      getRelatedJoinAttribute(relatedGeometry, 'target'),
       joinValue,
     )
 
@@ -172,11 +169,15 @@
       return
     }
 
-    const targetAttribute = relatedGeometry.targetAttribute || 'fid'
     const joinKey = `${ relatedGeometry.layerId }:${ joinValues.map(String).sort().join(',') }`
     if (joinKey !== lastJoinKey) {
-      const filter = buildRelatedGeometryFilter(targetAttribute, joinValues)
-      showRelatedLayers(layerIds, filter)
+      showRelatedLayers(
+        layerIds,
+        buildRelatedGeometryFilter(
+          getRelatedJoinAttribute(relatedGeometry, 'target'),
+          joinValues,
+        ),
+      )
       activeRelatedLayerIds = layerIds
       lastJoinKey = joinKey
     }

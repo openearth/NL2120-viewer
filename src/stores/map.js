@@ -37,7 +37,6 @@ export const useMapStore = defineStore('map', {
     layerClickableByStep: {},
     activeRegion: null,
     activeRegionId: null,
-    /** Hovered vector feature { layerId, properties, feature } — used e.g. for relatedGeometry preview */
     hoveredFeature: null,
   }),
   
