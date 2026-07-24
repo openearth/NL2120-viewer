@@ -15,6 +15,7 @@ declare module 'vue' {
     AreaMenu: typeof import('./src/components/AreaMenu.vue')['default']
     FeatureInfoPanel: typeof import('./src/components/FeatureInfoPanel.vue')['default']
     FlashHighlight: typeof import('./src/components/FlashHighlight.vue')['default']
+    InfoDialog: typeof import('./src/components/InfoDialog.vue')['default']
     LayerAttributeFilter: typeof import('./src/components/LayerAttributeFilter.vue')['default']
     LayerLegend: typeof import('./src/components/LayerLegend.vue')['default']
     LayerList: typeof import('./src/components/LayerList.vue')['default']

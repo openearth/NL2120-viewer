@@ -7,6 +7,7 @@ export const useAppStore = defineStore('app', {
     completedSteps: [],
     processResults: {},
     selections: {},
+    infoDialogOpen: false,
   }),
 
   getters: {
@@ -81,6 +82,14 @@ export const useAppStore = defineStore('app', {
       } else {
         this.activeMenu = null
       }
+    },
+
+    openInfoDialog () {
+      this.infoDialogOpen = true
+    },
+
+    closeInfoDialog () {
+      this.infoDialogOpen = false
     },
   },
 })

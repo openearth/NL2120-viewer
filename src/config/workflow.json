@@ -2,6 +2,17 @@
   "logo": "/nl2120_logo.png",
   "initialSetup": {},
   "legendStack": "horizontal",
+  "infoDialog": {
+    "enabled": true,
+    "showOnStart": true,
+    "showButton": true,
+    "remember": "local",
+    "title": "Over deze kaart",
+    "contentFile": "info-dialog.md",
+    "closeLabel": "Sluiten",
+    "width": "50vw",
+    "height": "70vh"
+  },
   "steps": [
     {
       "id": "layerViewer",

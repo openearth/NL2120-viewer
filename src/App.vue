@@ -6,6 +6,7 @@
       <feature-info-panel />
       <layer-legend />
     </v-main>
+    <info-dialog />
   </v-app>
 </template>
 
@@ -14,6 +15,7 @@
   import NavigationDrawer from '@/components/NavigationDrawer.vue'
   import LayerLegend from '@/components/LayerLegend.vue'
   import FeatureInfoPanel from '@/components/FeatureInfoPanel.vue'
+  import InfoDialog from '@/components/InfoDialog.vue'
   import workflowConfig from '@/config/workflow.json'
   import { useAppStore } from '@/stores/app'
   import { useMapStore } from '@/stores/map'
