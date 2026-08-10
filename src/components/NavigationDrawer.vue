@@ -1,6 +1,7 @@
 <template>
   <v-navigation-drawer
     class="custom-navigation-drawer"
+    permanent
     width="200"
   >
     <div class="drawer-content">
