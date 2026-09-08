@@ -54,8 +54,31 @@
               v-show="isLayerExpanded(layer.id)"
               class="pa-3 pt-2 legend-item-body"
             >
+              <div
+                v-if="layer.legendMode === 'categories'"
+                class="legend-categories"
+              >
+                <div
+                  v-for="row in getCategoryRows(layer.id)"
+                  :key="row.value"
+                  class="legend-category-row"
+                  :class="{ 'legend-category-row--dimmed': row.dimmed }"
+                >
+                  <span
+                    class="legend-category-swatch"
+                    :style="{ backgroundColor: row.color }"
+                  />
+                  <span class="legend-category-label">{{ row.value }}</span>
+                </div>
+                <div
+                  v-if="getCategoryRows(layer.id).length === 0"
+                  class="text-caption text-medium-emphasis"
+                >
+                  Loading…
+                </div>
+              </div>
               <img
-                v-if="!failedImageIds.has(layer.id)"
+                v-else-if="!failedImageIds.has(layer.id)"
                 class="legend-image"
                 :src="buildLegendUrl(layer)"
                 alt=""
@@ -104,6 +127,9 @@
       if (!oldIds.has(layer.id)) {
         next.add(layer.id)
       }
+      if (layer.legendMode === 'categories') {
+        mapStore.ensureLayerCategories(layer.id)
+      }
     })
     const newIds = new Set(newLayers.map(l => l.id))
     next.forEach(id => {
@@ -112,12 +138,16 @@
       }
     })
     expandedLayers.value = next
-  })
+  }, { immediate: true })
 
   function getLayerName (layerId) {
     return findWorkflowLayer(layerId)?.name
       || visibleLayers.value.find(l => l.id === layerId)?.name
       || layerId
+  }
+
+  function getCategoryRows (layerId) {
+    return mapStore.getLayerCategoryRows(layerId)
   }
 
   function toggleLegend () {
@@ -207,5 +237,34 @@
 .legend-image {
   max-width: 100%;
   display: block;
+}
+
+.legend-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.legend-category-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-category-row--dimmed .legend-category-label {
+  opacity: 0.45;
+}
+
+.legend-category-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.legend-category-label {
+  font-size: 0.8125rem;
+  line-height: 1.2;
 }
 </style>

@@ -69,41 +69,42 @@
             6.822046610714709,
             53.24472720689029
         ],
-        "layout": {
-            "text-field": "■",
-            "text-size": 20,
-            "text-allow-overlap": true
-        },
-        "paint": {
-            "text-color": [
-                "case",
-                [
-                    "boolean",
-                    [
-                        "feature-state",
-                        "selected"
-                    ],
-                    false
+        "vectorType": "circle",
+        "legendMode": "categories",
+        "categoryStyle": {
+            "attribute": "landschap_filter",
+            "delimiter": ";",
+            "colors": {
+                "byValue": {
+                    "KUST": "#1e88e5"
+                },
+                "palette": [
+                    "#e53935",
+                    "#8e24aa",
+                    "#6d4c41",
+                    "#fdd835"
                 ],
-                "#ffcc00",
-                [
-                    "case",
-                    [
-                        "boolean",
-                        [
-                            "feature-state",
-                            "hover"
-                        ],
-                        false
-                    ],
-                    "#ffeb3b",
-                    "#e53935"
-                ]
-            ],
-            "text-halo-color": "#ffffff",
-            "text-halo-width": 1
+                "startHue": "#1e88e5"
+            },
+            "fallbackColor": "#9e9e9e",
+            "radius": 7,
+            "strokeColor": "#ffffff",
+            "strokeWidth": 1.5,
+            "hover": {
+                "strokeColor": "#212121",
+                "strokeWidth": 3
+            },
+            "selected": {
+                "strokeColor": "#000000",
+                "strokeWidth": 4
+            },
+            "dimmed": {
+                "color": "#bdbdbd",
+                "opacity": 0.45,
+                "strokeColor": "#ffffff",
+                "strokeWidth": 1
+            }
         },
-        "vectorType": "symbol",
         "minZoom": 0
     }
 ]

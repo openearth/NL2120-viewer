@@ -41,6 +41,7 @@
             v-for="option in options"
             :key="option.value"
             class="px-0 filter-item"
+            :class="{ 'filter-item--dimmed': !selectedValues.includes(option.value) }"
           >
             <template #prepend>
               <v-checkbox
@@ -52,7 +53,12 @@
                 @update:model-value="toggleValue(option.value, $event)"
               />
             </template>
-            <v-list-item-title class="text-caption filter-item-title">
+            <v-list-item-title class="text-caption filter-item-title d-flex align-center">
+              <span
+                v-if="showCategoryColors"
+                class="filter-category-swatch"
+                :style="{ backgroundColor: swatchColorFor(option.value, !selectedValues.includes(option.value)) }"
+              />
               {{ option.value }} ({{ option.count }})
             </v-list-item-title>
           </v-list-item>
@@ -67,7 +73,10 @@
             v-for="group in groups"
             :key="group.value"
           >
-            <v-list-item class="px-0 filter-item filter-item--parent">
+            <v-list-item
+              class="px-0 filter-item filter-item--parent"
+              :class="{ 'filter-item--dimmed': !isParentActive(group) }"
+            >
               <template #prepend>
                 <v-checkbox
                   :model-value="isParentChecked(group)"
@@ -79,7 +88,12 @@
                   @update:model-value="toggleParent(group, $event)"
                 />
               </template>
-              <v-list-item-title class="text-caption filter-item-title">
+              <v-list-item-title class="text-caption filter-item-title d-flex align-center">
+                <span
+                  v-if="showCategoryColors"
+                  class="filter-category-swatch"
+                  :style="{ backgroundColor: swatchColorFor(group.value, !isParentActive(group)) }"
+                />
                 {{ group.value }} ({{ group.count }})
               </v-list-item-title>
               <template #append>
@@ -104,6 +118,9 @@
                 v-for="child in group.children"
                 :key="pairKey(group.value, child.value)"
                 class="px-0 filter-item filter-item--child"
+                :class="{
+                  'filter-item--dimmed': !selectedPairs.includes(pairKey(group.value, child.value)),
+                }"
               >
                 <template #prepend>
                   <v-checkbox
@@ -131,6 +148,13 @@
   import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
   import { useMapStore } from '@/stores/map'
   import FlashHighlight from '@/components/FlashHighlight.vue'
+  import {
+    buildPairCondition,
+    buildTokenMatchExpression,
+    getDimmedCategoryColor,
+    pairKey,
+    parsePairKey,
+  } from '@/lib/category-style'
 
   const props = defineProps({
     layerId: { type: String, required: true },
@@ -141,9 +165,12 @@
     defaultCollapse: { type: Boolean, default: false },
     /** Shown (and matched) when a feature has no usable secondary value */
     emptySecondaryLabel: { type: String, default: 'Geen categorie' },
-    wfsUrl: { type: String, required: true },
+    wfsUrl: { type: String, default: null },
     delimiter: { type: String, default: ';' },
     flashWhenEnabled: { type: Boolean, default: false },
+    showCategoryColors: { type: Boolean, default: false },
+    /** false | 'primary' | 'all' — dim instead of hide when unchecked */
+    dimOnDeselect: { type: [ Boolean, String ], default: false },
   })
 
   const mapStore = useMapStore()
@@ -154,8 +181,15 @@
   const selectedValues = ref([])
   const selectedPairs = ref([])
   const expandedGroups = ref(new Set())
+  /** Remember child selection when a parent is unchecked (dim mode) */
+  const rememberedParentPairs = ref({})
 
   const isHierarchical = computed(() => Boolean(props.secondaryAttributeKey))
+  const dimMode = computed(() => {
+    if (props.dimOnDeselect === true || props.dimOnDeselect === 'all') return 'all'
+    if (props.dimOnDeselect === 'primary') return 'primary'
+    return false
+  })
 
   const hasOptions = computed(() => {
     return isHierarchical.value
@@ -167,21 +201,21 @@
     return mapStore.layerVisibility[props.layerId] === true && hasOptions.value
   })
 
-  function parseDelimitedValues (rawValue) {
-    if (typeof rawValue !== 'string' || rawValue.length === 0) return []
-    return rawValue
-      .split(props.delimiter)
-      .map(v => v.trim())
-      .filter(v => v.length > 0)
+  const filterConfig = computed(() => ({
+    attributeKey: props.attributeKey,
+    secondaryAttributeKey: props.secondaryAttributeKey,
+    delimiter: props.delimiter,
+    emptySecondaryLabel: props.emptySecondaryLabel,
+  }))
+
+  function colorFor (value) {
+    return mapStore.layerCategories[props.layerId]?.colorByValue?.[value] || '#9e9e9e'
   }
 
-  /** Stable key for a (primary, secondary) selection pair */
-  function pairKey (primary, secondary) {
-    return JSON.stringify([ primary, secondary ])
-  }
-
-  function parsePairKey (key) {
-    return JSON.parse(key)
+  function swatchColorFor (value, isDimmed) {
+    if (!isDimmed) return colorFor(value)
+    const layerConfig = mapStore.layersConfig.find(cfg => cfg.id === props.layerId)
+    return getDimmedCategoryColor(layerConfig?.categoryStyle)
   }
 
   function allPairKeys (groupList) {
@@ -194,34 +228,47 @@
     return group.children.map(child => pairKey(group.value, child.value))
   }
 
-  function resolveSecondaries (rawSecondary) {
-    const values = parseDelimitedValues(rawSecondary)
-    return values.length > 0 ? values : [ props.emptySecondaryLabel ]
-  }
-
   function resetLocalState () {
     options.value = []
     groups.value = []
     selectedValues.value = []
     selectedPairs.value = []
     expandedGroups.value = new Set()
+    rememberedParentPairs.value = {}
   }
 
   async function loadOptions () {
     isLoading.value = true
     errorMessage.value = ''
     try {
-      const response = await fetch(props.wfsUrl)
-      if (!response.ok) {
-        throw new Error(`HTTP ${ response.status }`)
-      }
-      const data = await response.json()
-      const features = Array.isArray(data?.features) ? data.features : []
+      const entry = await mapStore.ensureLayerCategories(props.layerId, {
+        attributeKey: props.attributeKey,
+        secondaryAttributeKey: props.secondaryAttributeKey,
+        delimiter: props.delimiter,
+        emptySecondaryLabel: props.emptySecondaryLabel,
+        wfsUrl: props.wfsUrl,
+      })
 
-      if (isHierarchical.value) {
-        loadHierarchicalOptions(features)
+      if (!entry || entry.error) {
+        errorMessage.value = entry?.error || 'Unable to load filter options.'
+        resetLocalState()
+        return
+      }
+
+      if (entry.hierarchical) {
+        groups.value = entry.groups
+        options.value = []
+        selectedPairs.value = allPairKeys(entry.groups)
+        selectedValues.value = []
+        expandedGroups.value = props.defaultCollapse
+          ? new Set()
+          : new Set(entry.groups.map(group => group.value))
       } else {
-        loadFlatOptions(features)
+        options.value = entry.options
+        groups.value = []
+        selectedValues.value = entry.options.map(o => o.value)
+        selectedPairs.value = []
+        expandedGroups.value = new Set()
       }
     } catch (error) {
       console.error(`[LayerAttributeFilter] Failed to load options for ${ props.layerId }:`, error)
@@ -230,68 +277,6 @@
     } finally {
       isLoading.value = false
     }
-  }
-
-  function loadFlatOptions (features) {
-    const counts = new Map()
-
-    for (const feature of features) {
-      const values = parseDelimitedValues(feature?.properties?.[props.attributeKey])
-      for (const value of values) {
-        counts.set(value, (counts.get(value) ?? 0) + 1)
-      }
-    }
-
-    resetLocalState()
-    options.value = Array.from(counts.entries())
-      .map(([ value, count ]) => ({ value, count }))
-      .sort((a, b) => a.value.localeCompare(b.value))
-    selectedValues.value = options.value.map(o => o.value)
-  }
-
-  function loadHierarchicalOptions (features) {
-    const parentCounts = new Map()
-    const childCounts = new Map()
-
-    for (const feature of features) {
-      const primaries = parseDelimitedValues(feature?.properties?.[props.attributeKey])
-      if (primaries.length === 0) continue
-
-      const secondaries = resolveSecondaries(feature?.properties?.[props.secondaryAttributeKey])
-
-      for (const primary of primaries) {
-        parentCounts.set(primary, (parentCounts.get(primary) ?? 0) + 1)
-
-        if (!childCounts.has(primary)) {
-          childCounts.set(primary, new Map())
-        }
-        const children = childCounts.get(primary)
-        for (const secondary of secondaries) {
-          children.set(secondary, (children.get(secondary) ?? 0) + 1)
-        }
-      }
-    }
-
-    const nextGroups = Array.from(parentCounts.entries())
-      .map(([ value, count ]) => {
-        const childrenMap = childCounts.get(value) ?? new Map()
-        const children = Array.from(childrenMap.entries())
-          .map(([ childValue, childCount ]) => ({ value: childValue, count: childCount }))
-          .sort((a, b) => {
-            if (a.value === props.emptySecondaryLabel) return 1
-            if (b.value === props.emptySecondaryLabel) return -1
-            return a.value.localeCompare(b.value)
-          })
-        return { value, count, children }
-      })
-      .sort((a, b) => a.value.localeCompare(b.value))
-
-    resetLocalState()
-    groups.value = nextGroups
-    selectedPairs.value = allPairKeys(nextGroups)
-    expandedGroups.value = props.defaultCollapse
-      ? new Set()
-      : new Set(nextGroups.map(group => group.value))
   }
 
   function toggleInList (listRef, key, checked) {
@@ -313,6 +298,9 @@
   }
 
   function toggleGroupExpanded (value) {
+    const group = groups.value.find(g => g.value === value)
+    if (!group || !isParentActive(group)) return
+
     const next = new Set(expandedGroups.value)
     if (next.has(value)) {
       next.delete(value)
@@ -323,7 +311,8 @@
   }
 
   function isParentChecked (group) {
-    return childPairKeys(group).every(key => selectedPairs.value.includes(key))
+    const keys = childPairKeys(group)
+    return keys.length > 0 && keys.every(key => selectedPairs.value.includes(key))
   }
 
   function isParentIndeterminate (group) {
@@ -332,39 +321,32 @@
     return selectedCount > 0 && selectedCount < keys.length
   }
 
-  function toggleParent (group, checked) {
-    const current = new Set(selectedPairs.value)
-    for (const key of childPairKeys(group)) {
-      checked ? current.add(key) : current.delete(key)
-    }
-    selectedPairs.value = Array.from(current)
+  function isParentActive (group) {
+    return childPairKeys(group).some(key => selectedPairs.value.includes(key))
   }
 
-  function buildPairCondition (primary, secondary) {
-    const primaryMatch = [
-      'in',
-      primary,
-      [ 'coalesce', [ 'get', props.attributeKey ], '' ],
-    ]
+  function toggleParent (group, checked) {
+    const keys = childPairKeys(group)
+    if (checked) {
+      const remembered = rememberedParentPairs.value[group.value]
+      const toRestore = Array.isArray(remembered) && remembered.length > 0 ? remembered : keys
+      const current = new Set(selectedPairs.value)
+      for (const key of toRestore) current.add(key)
+      selectedPairs.value = Array.from(current)
+      delete rememberedParentPairs.value[group.value]
+    } else {
+      rememberedParentPairs.value[group.value] = keys.filter(key =>
+        selectedPairs.value.includes(key),
+      )
+      const current = new Set(selectedPairs.value)
+      for (const key of keys) current.delete(key)
+      selectedPairs.value = Array.from(current)
 
-    // emptySecondaryLabel ↔ missing/empty secondary attribute on the feature
-    if (secondary === props.emptySecondaryLabel) {
-      return [
-        'all',
-        primaryMatch,
-        [ '==', [ 'coalesce', [ 'get', props.secondaryAttributeKey ], '' ], '' ],
-      ]
+      // Collapse when parent is unchecked
+      const next = new Set(expandedGroups.value)
+      next.delete(group.value)
+      expandedGroups.value = next
     }
-
-    return [
-      'all',
-      primaryMatch,
-      [
-        'in',
-        secondary,
-        [ 'coalesce', [ 'get', props.secondaryAttributeKey ], '' ],
-      ],
-    ]
   }
 
   /**
@@ -384,29 +366,64 @@
     mapStore.setLayerFilter(props.layerId, [ 'any', ...buildConditions(selected) ])
   }
 
-  function applyFilterToLayer () {
+  function publishSelection () {
+    if (dimMode.value) {
+      let selectedKeys
+      let publishedConfig = filterConfig.value
+
+      if (dimMode.value === 'primary') {
+        selectedKeys = isHierarchical.value
+          ? groups.value.filter(group => isParentActive(group)).map(group => group.value)
+          : selectedValues.value
+        publishedConfig = {
+          ...filterConfig.value,
+          secondaryAttributeKey: null,
+        }
+      } else {
+        selectedKeys = isHierarchical.value
+          ? selectedPairs.value
+          : selectedValues.value
+      }
+
+      mapStore.setLayerFilterSelection(props.layerId, {
+        selectedKeys,
+        filterConfig: publishedConfig,
+        dimMode: dimMode.value,
+      })
+      return
+    }
+
+    // Classic hide-filter behaviour
+    mapStore.clearLayerFilterSelection(props.layerId)
+
     if (isHierarchical.value) {
       const allKeys = allPairKeys(groups.value)
       setLayerFilterFromSelection(allKeys.length, selectedPairs.value, selected =>
         selected.map(key => {
           const [ primary, secondary ] = parsePairKey(key)
-          return buildPairCondition(primary, secondary)
+          return buildPairCondition(primary, secondary, filterConfig.value)
         }),
       )
       return
     }
 
     setLayerFilterFromSelection(options.value.length, selectedValues.value, selected =>
-      selected.map(value => [
-        'in',
-        value,
-        [ 'coalesce', [ 'get', props.attributeKey ], '' ],
-      ]),
+      selected.map(value =>
+        buildTokenMatchExpression(props.attributeKey, value, props.delimiter),
+      ),
     )
   }
 
-  watch(selectedValues, applyFilterToLayer)
-  watch(selectedPairs, applyFilterToLayer)
+  watch(selectedValues, publishSelection)
+  watch(selectedPairs, () => {
+    publishSelection()
+    if (!isHierarchical.value) return
+    const next = new Set(expandedGroups.value)
+    for (const group of groups.value) {
+      if (!isParentActive(group)) next.delete(group.value)
+    }
+    expandedGroups.value = next
+  })
 
   onMounted(() => {
     loadOptions()
@@ -414,6 +431,7 @@
 
   onBeforeUnmount(() => {
     mapStore.setLayerFilter(props.layerId, null)
+    mapStore.clearLayerFilterSelection(props.layerId)
   })
 </script>
 
@@ -425,6 +443,11 @@
 
 .filter-item {
   min-height: 18px;
+}
+
+.filter-item--dimmed .filter-item-title,
+.filter-item--dimmed .filter-expand-icon {
+  opacity: 0.45;
 }
 
 .filter-item--parent {
@@ -458,6 +481,15 @@
 .filter-item-title {
   white-space: normal;
   line-height: 1;
+}
+
+.filter-category-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
 }
 
 .filter-item :deep(.v-selection-control) {
