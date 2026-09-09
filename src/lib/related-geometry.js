@@ -70,7 +70,7 @@ export function buildRelatedGeometryWfsUrl (layerConfig, attribute, value) {
 }
 
 function formatCqlValue (value) {
-  const text = String(value).replace(/'/g, "''")
+  const text = String(value).replace(/'/g, '\'\'')
   if (/^-?\d+(\.\d+)?$/.test(text)) {
     return text
   }

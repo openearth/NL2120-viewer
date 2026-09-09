@@ -12,7 +12,6 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     ActiveFeatureProperties: typeof import('./src/components/ActiveFeatureProperties.vue')['default']
-    AreaMenu: typeof import('./src/components/AreaMenu.vue')['default']
     FeatureInfoPanel: typeof import('./src/components/FeatureInfoPanel.vue')['default']
     FlashHighlight: typeof import('./src/components/FlashHighlight.vue')['default']
     InfoDialog: typeof import('./src/components/InfoDialog.vue')['default']
@@ -24,6 +23,7 @@ declare module 'vue' {
     MapZoomControl: typeof import('./src/components/MapZoomControl.vue')['default']
     NavigationDrawer: typeof import('./src/components/NavigationDrawer.vue')['default']
     NumberInput: typeof import('./src/components/NumberInput.vue')['default']
+    ProcessRunButton: typeof import('./src/components/ProcessRunButton.vue')['default']
     RelatedGeometry: typeof import('./src/components/RelatedGeometry.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

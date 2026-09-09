@@ -31,14 +31,13 @@
           :class="{ 'mb-2': legendStack === 'vertical' }"
           elevation="2"
           rounded="xl"
-          max-width="300"
+          :max-width="layer.legendCardMaxWidth ?? LEGEND_UI_DEFAULTS.cardMaxWidth"
         >
           <v-card-title
-            class="d-flex justify-space-between align-center pa-3 cursor-pointer"
-            style="user-select: none;"
+            class="d-flex justify-space-between align-center pa-3 cursor-pointer legend-item-card__header"
             @click="toggleLayerLegend(layer.id)"
           >
-            <span class="text-body-2 font-weight-medium">
+            <span class="text-body-2 font-weight-medium legend-item-card__title">
               {{ getLayerName(layer.id) }}
             </span>
             <v-icon
@@ -52,7 +51,9 @@
           <v-expand-transition>
             <v-card-text
               v-show="isLayerExpanded(layer.id)"
-              class="pa-3 pt-2 legend-item-body"
+              class="pa-3 pt-2 legend-item-body legend-card-body"
+              :class="{ 'legend-card-body--dense': isDenseLegendLayout(layer) }"
+              :style="legendBodyStyle(layer)"
             >
               <div
                 v-if="layer.legendMode === 'categories'"
@@ -81,7 +82,8 @@
                 v-else-if="!failedImageIds.has(layer.id)"
                 class="legend-image"
                 :src="buildLegendUrl(layer)"
-                alt=""
+                :alt="`${ getLayerName(layer.id) } legend`"
+                loading="lazy"
                 @error="onImageError(layer.id)"
               >
             </v-card-text>
@@ -97,6 +99,7 @@
   import { useMapStore } from '@/stores/map'
   import buildLegendUrl from '@/lib/build-legend-url'
   import { findWorkflowLayer } from '@/lib/find-workflow-layer'
+  import { isDenseLegendLayout, LEGEND_UI_DEFAULTS } from '@/lib/legend-config'
   import navigationConfig from '@/config/workflow.json'
 
   const mapStore = useMapStore()
@@ -111,13 +114,18 @@
   const visibleLayers = computed(() => mapStore.visibleLayersWithConfig)
   const hasVisibleLayers = computed(() => visibleLayers.value.length > 0)
 
-  watch(hasVisibleLayers, (newValue) => {
-    if (newValue) {
-      showLegend.value = true
-      const next = new Set(expandedLayers.value)
-      visibleLayers.value.forEach(layer => next.add(layer.id))
-      expandedLayers.value = next
+  function expandLayerIfConfigured (layer, targetSet) {
+    if (layer.legendExpanded !== false) {
+      targetSet.add(layer.id)
     }
+  }
+
+  watch(hasVisibleLayers, (newValue) => {
+    if (!newValue) return
+    showLegend.value = true
+    const next = new Set(expandedLayers.value)
+    visibleLayers.value.forEach(layer => expandLayerIfConfigured(layer, next))
+    expandedLayers.value = next
   })
 
   watch(visibleLayers, (newLayers, oldLayers) => {
@@ -125,7 +133,7 @@
     const oldIds = new Set(oldLayers?.map(l => l.id) || [])
     newLayers.forEach(layer => {
       if (!oldIds.has(layer.id)) {
-        next.add(layer.id)
+        expandLayerIfConfigured(layer, next)
       }
       if (layer.legendMode === 'categories') {
         mapStore.ensureLayerCategories(layer.id)
@@ -148,6 +156,12 @@
 
   function getCategoryRows (layerId) {
     return mapStore.getLayerCategoryRows(layerId)
+  }
+
+  function legendBodyStyle (layer) {
+    if (layer.legendMode === 'categories') return undefined
+    const maxHeight = layer.legendBodyMaxHeight ?? LEGEND_UI_DEFAULTS.bodyMaxHeight
+    return { maxHeight: `${ maxHeight }px` }
   }
 
   function toggleLegend () {
@@ -225,7 +239,17 @@
   min-height: 0;
 }
 
+.legend-item-card__header {
+  user-select: none;
+}
+
+.legend-item-card__title {
+  line-height: 1.3;
+  padding-right: 4px;
+}
+
 .legend-chevron {
+  flex-shrink: 0;
   transform: rotate(-180deg);
   transition: transform 0.4s;
 }
@@ -234,8 +258,19 @@
   transform: rotate(0deg);
 }
 
+.legend-card-body {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.legend-card-body--dense .legend-image {
+  max-width: none;
+  width: max-content;
+}
+
 .legend-image {
   max-width: 100%;
+  height: auto;
   display: block;
 }
 

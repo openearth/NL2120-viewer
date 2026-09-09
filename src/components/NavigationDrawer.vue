@@ -9,8 +9,8 @@
         <v-list-item class="d-flex justify-center align-center pa-5">
           <v-img
             :src="config.logo"
-            alt="DesirMED Logo"
-            width="80px"
+            :alt="config.logoAlt || 'Logo'"
+            :width="config.logoWidth || '80px'"
           />
         </v-list-item>
         <v-list-item

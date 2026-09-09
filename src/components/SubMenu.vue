@@ -70,6 +70,7 @@
   import { useAppStore } from '@/stores/app'
   import { useMapStore } from '@/stores/map'
   import { executeProcessConfig } from '@/lib/ogc-process/execute-config'
+  import { isSelectionMissing } from '@/lib/selection-utils'
   import FlashHighlight from '@/components/FlashHighlight.vue'
 
   const props = defineProps({
@@ -120,22 +121,12 @@
     return loadedComponents.value.filter(comp => comp.component)
   })
 
-  function isSelectionMissing (value) {
-    if (value == null) return true
-    if (typeof value === 'string') return value === ''
-    if (typeof value === 'object' && value !== null && 'id' in value) {
-      return value.id == null || value.id === ''
-    }
-    return false
-  }
-
   const requiredSelectionsSatisfied = computed(() => {
     const keys = props.requiredSelections
     if (!Array.isArray(keys) || keys.length === 0) return true
     return keys.every(key => !isSelectionMissing(store.selections[key]))
   })
 
-  /** For process-driven steps, footer Confirm must wait for a successful run (payload includes `result`). */
   const confirmButtonDisabled = computed(() => {
     if (!props.requiresConfirmation) return false
     if (!requiredSelectionsSatisfied.value) return true

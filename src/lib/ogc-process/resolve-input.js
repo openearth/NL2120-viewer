@@ -22,11 +22,20 @@ export function resolveInputValue (source, context) {
   return undefined
 }
 
+function coerceProcessScalar (value) {
+  if (value != null && typeof value === 'object' && !Array.isArray(value) && 'id' in value) {
+    return value.id
+  }
+  return value
+}
+
 /**
- * Resolve process inputs from config.
- * @param {Array} inputs - [{ id, source }, ...]
- * @param {Object} context - { payload, stores }
- * @returns {Array} [{ id, value }, ...] for sendProcessRequest
+ * Resolve process inputs from config for JSON execute bodies.
+ * Objects shaped like SelectionList values `{ id, ... }` are reduced to `id`.
+ *
+ * @param {Array<{ id: string, source: string }>} inputs
+ * @param {{ payload: object, stores: object }} context
+ * @returns {Array<{ id: string, value: unknown }>}
  */
 export function resolveInputs (inputs, context) {
   if (!Array.isArray(inputs)) return []
@@ -35,7 +44,9 @@ export function resolveInputs (inputs, context) {
     if (!id || !source) continue
     const value = resolveInputValue(source, context)
     if (value === undefined || value === null) continue
-    out.push({ id, value })
+    const scalar = coerceProcessScalar(value)
+    if (scalar === undefined || scalar === null) continue
+    out.push({ id, value: scalar })
   }
   return out
 }

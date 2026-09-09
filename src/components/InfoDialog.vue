@@ -49,7 +49,7 @@
   import workflowConfig from '@/config/workflow.json'
   import { useAppStore } from '@/stores/app'
 
-  const DEFAULT_STORAGE_KEY = 'nl2120-viewer:info-dialog-seen'
+  const DEFAULT_STORAGE_KEY = 'viewer:info-dialog-seen'
 
   // Open markdown links in a new tab (marked default is same-tab).
   marked.use({

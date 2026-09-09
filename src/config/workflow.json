@@ -7,6 +7,7 @@
     "showOnStart": true,
     "showButton": true,
     "remember": "local",
+    "storageKey": "nl2120-viewer:info-dialog-seen",
     "title": "Over deze kaart",
     "contentFile": "info-dialog.md",
     "closeLabel": "Sluiten",

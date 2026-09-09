@@ -12,6 +12,7 @@ import {
   parsePairKey,
   tabulateCategories,
 } from '@/lib/category-style'
+import { pickLayerLegendFields } from '@/lib/legend-config'
 import { useAppStore } from '@/stores/app'
 
 function normalizeLayerUrlForBrowser (rawUrl) {
@@ -183,6 +184,7 @@ export const useMapStore = defineStore('map', {
               layer: layerConfig.layer,
               name: layerConfig.name,
               legendMode: layerConfig.legendMode || null,
+              ...pickLayerLegendFields(layerConfig),
             })
           }
         }
