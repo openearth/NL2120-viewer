@@ -76,7 +76,12 @@
             "delimiter": ";",
             "colors": {
                 "byValue": {
-                    "KUST": "#1e88e5"
+                    "KUST": "#AFEEEE",
+                    "MEREN": "#0000FF",
+                    "RIVIEREN": "#000080",
+                    "STAD": "#FF0000",
+                    "VEEN": "#800080",
+                    "ZANDGRONDEN": "#fdd835"
                 },
                 "palette": [
                     "#e53935",
