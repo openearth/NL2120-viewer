@@ -1,5 +1,5 @@
 import buildGeoserverUrl from './build-geoserver-url'
-import { getInitialCategoryCirclePaint } from './category-style'
+import { getInitialCategoryCirclePaint, getInitialCategoryFillPaint } from './category-style'
 
 
 function buildWmtsLayer ({
@@ -35,14 +35,17 @@ function buildWmtsLayer ({
     transparent: true,
   })
 
-  // Neutral circle until the store applies live category colors
-  const resolvedPaint = categoryStyle && Object.keys(paint || {}).length === 0
-    ? getInitialCategoryCirclePaint(categoryStyle)
-    : paint
+  // Neutral style until the store applies live category colors
+  let resolvedPaint = paint
+  if (categoryStyle && Object.keys(paint || {}).length === 0) {
+    resolvedPaint = vectorType === 'fill'
+      ? getInitialCategoryFillPaint(categoryStyle)
+      : getInitialCategoryCirclePaint(categoryStyle)
+  }
 
   return format === 'application/vnd.mapbox-vector-tile'
     ? {
-      'id': id, // Use original config ID to match visibility/clickable state
+      'id': id,
       layer,
       'type': vectorType,
       'source': {

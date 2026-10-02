@@ -25,7 +25,8 @@
           variant="tonal"
           color="primary"
           size="small"
-          :disabled="isCalcDisabled"
+          :disabled="isCalcButtonDisabled"
+          :loading="showButtonSpinner"
           :title="calcButtonTitle"
           @click="onCalcClick"
         />
@@ -39,10 +40,12 @@
   import { useAppStore } from '@/stores/app'
   import { useMapStore } from '@/stores/map'
   import { resolveInputValue } from '@/lib/ogc-process/resolve-input'
+  import { useProcessRunUi } from '@/lib/use-process-run-ui'
   import FlashHighlight from '@/components/FlashHighlight.vue'
 
   const appStore = useAppStore()
   const mapStore = useMapStore()
+  const { isProcessLoading, showButtonSpinner } = useProcessRunUi()
 
   const props = defineProps({
     label: { type: String, required: true },
@@ -88,8 +91,12 @@
     return invalidValue || !calcConditionMet.value
   })
 
+  const isCalcButtonDisabled = computed(() =>
+    isCalcDisabled.value || isProcessLoading.value,
+  )
+
   const needsCalcInteraction = computed(() => {
-    if (!props.showCalcButton || isCalcDisabled.value) return false
+    if (!props.showCalcButton || isCalcButtonDisabled.value) return false
     return lastRunValue.value !== value.value
   })
 
@@ -106,7 +113,7 @@
   }, { immediate: true })
 
   function onCalcClick () {
-    if (props.showCalcButton && !isCalcDisabled.value) {
+    if (props.showCalcButton && !isCalcButtonDisabled.value) {
       lastRunValue.value = value.value
       emit('run-process', { value: value.value })
     }

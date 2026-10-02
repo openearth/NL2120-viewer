@@ -9,7 +9,8 @@
         variant="tonal"
         block
         size="small"
-        :disabled="!allRequiredSelected"
+        :disabled="isRunDisabled"
+        :loading="showButtonSpinner"
         @click="onRunClick"
       >
         {{ label }}
@@ -22,6 +23,7 @@
   import { ref, computed, watch, inject } from 'vue'
   import { useAppStore } from '@/stores/app'
   import { isSelectionMissing } from '@/lib/selection-utils'
+  import { useProcessRunUi } from '@/lib/use-process-run-ui'
   import FlashHighlight from '@/components/FlashHighlight.vue'
 
   const props = defineProps({
@@ -33,6 +35,7 @@
   const emit = defineEmits(['run-process'])
   const appStore = useAppStore()
   const stepId = inject('stepId', null)
+  const { isProcessLoading, showButtonSpinner } = useProcessRunUi()
   const lastRunSignature = ref(null)
 
   const isThisStepOpen = computed(() => stepId != null && appStore.activeMenu === stepId)
@@ -52,8 +55,12 @@
     return keys.every(key => !isSelectionMissing(appStore.selections[key]))
   })
 
+  const isRunDisabled = computed(() =>
+    !allRequiredSelected.value || isProcessLoading.value,
+  )
+
   const needsRunHighlight = computed(() => {
-    if (!props.flashWhenEnabled || !allRequiredSelected.value) return false
+    if (!props.flashWhenEnabled || isRunDisabled.value) return false
     return lastRunSignature.value !== selectionSignature.value
   })
 
@@ -62,7 +69,7 @@
   })
 
   function onRunClick () {
-    if (!allRequiredSelected.value) return
+    if (isRunDisabled.value) return
     lastRunSignature.value = selectionSignature.value
     emit('run-process', {})
   }

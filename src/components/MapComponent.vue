@@ -10,14 +10,14 @@
     >
       <MapLayer
         v-for="layer in mapStore.visibleMapboxLayers"
-        :key="`${layer.id}-${layer.type}`"
+        :key="layerKey(layer)"
         :layer="layer"
         @click="onFeatureClick"
       />
       <RelatedGeometry />
       <MapZoomControl
         v-if="!relatedGeometryHandlesZoom"
-        :feature="mapStore.activeRegion?.feature"
+        :feature="zoomFeature"
       />
       <MapboxNavigationControl position="bottom-right" />
     </mapbox-map>
@@ -47,18 +47,45 @@
     return Boolean(related && related.fitBounds !== false)
   })
 
+  const zoomFeature = computed(() => {
+    const region = mapStore.activeRegion
+    if (!region?.feature) return null
+    const workflowLayer = findWorkflowLayer(region.layerId)
+    if (workflowLayer?.fitBoundsOnSelect === false) return null
+    return region.feature
+  })
+
   function onMapCreated (map) {
     mapInstance.value = map
     mapStore.initializeMapboxLayers()
   }
 
+  function layerKey (layer) {
+    const tile = layer?.source?.tiles?.[0] || layer?.source || ''
+    return `${ layer.id }-${ layer.type }-${ tile }`
+  }
+
   function onFeatureClick (feature) {
     if (feature == null) {
-      mapStore.clearActiveRegion()
+      const prev = mapStore.activeRegion
+      const selection = appStore.selections.userCaseSelection
+      const isRegionLayer = Boolean(
+        selection != null
+          && typeof selection === 'object'
+          && selection.layerName
+          && prev?.layerId === selection.layerName,
+      )
+      mapStore.clearActiveRegion({ clearRegionId: isRegionLayer })
       return
     }
     if (!feature?.layer?.id) return
-    const layerId = feature.layer.id
+    let layerId = feature.layer.id
+    // Clicks on category outline companions count as the fill layer
+    if (layerId.endsWith('__outline')) {
+      layerId = layerId.replace(/__outline$/, '')
+    }
+    const workflowLayer = findWorkflowLayer(layerId)
+    // Only region-selection layers set activeRegionId for process inputs
     const selection = appStore.selections.userCaseSelection
     const regionIdProperty =
       selection != null &&
@@ -67,6 +94,11 @@
         ? selection.regionIdProperty
         : null
     mapStore.setActiveRegion(layerId, feature, regionIdProperty ?? undefined)
+
+    // Optional per-layer zoom suppress (e.g. NbS hexagon clicks)
+    if (workflowLayer?.fitBoundsOnSelect === false) {
+      return
+    }
   }
 
 </script>

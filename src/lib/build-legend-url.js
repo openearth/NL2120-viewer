@@ -9,38 +9,67 @@ const DEFAULT_LEGEND_OPTIONS = {
   forceTitles: 'off',
 }
 
+/** Opt-in legendSource value: HTML rows from GeoServer GetLegendGraphic JSON. */
+export const LEGEND_SOURCE_GET_LEGEND_GRAPHIC_JSON = 'getLegendGraphicJson'
+
 function serializeLegendOptions (options) {
   return Object.entries(options)
     .map(([ key, value ]) => `${ key }:${ value }`)
     .join(';')
 }
 
-export default function buildLegendUrl (layerData) {
-  const { url: rawUrl, layer, legendOptions } = layerData
-
-  if (!rawUrl || !layer) {
-    return undefined
-  }
+/** Rewrite GWC WMTS URLs to WMS and strip a trailing `?`. */
+function resolveWmsLegendBaseUrl (rawUrl) {
+  if (!rawUrl) return undefined
 
   let wmsUrl = rawUrl
   if (rawUrl.includes('/gwc/service/wmts')) {
     wmsUrl = rawUrl.replace('/gwc/service/wmts', '/wms')
   }
 
-  const baseUrl = wmsUrl.endsWith('?') ? wmsUrl.slice(0, -1) : wmsUrl
-  const legendOptionsParam = serializeLegendOptions({
-    ...DEFAULT_LEGEND_OPTIONS,
-    ...legendOptions,
-  })
+  return wmsUrl.endsWith('?') ? wmsUrl.slice(0, -1) : wmsUrl
+}
 
-  const params = queryString.stringify({
+function buildLegendRequestUrl (layerData, { format, includeLegendOptions = true } = {}) {
+  const { url: rawUrl, layer, legendOptions } = layerData
+
+  if (!rawUrl || !layer) {
+    return undefined
+  }
+
+  const baseUrl = resolveWmsLegendBaseUrl(rawUrl)
+  if (!baseUrl) return undefined
+
+  const params = {
     request: 'GetLegendGraphic',
     service: 'WMS',
     version: '1.0.0',
-    format: 'image/png',
+    format,
     layer,
-    legend_options: legendOptionsParam,
-  }, { encode: true, sort: false })
+  }
 
-  return `${ baseUrl }?${ params }`
+  if (includeLegendOptions) {
+    params.legend_options = serializeLegendOptions({
+      ...DEFAULT_LEGEND_OPTIONS,
+      ...legendOptions,
+    })
+  }
+
+  return `${ baseUrl }?${ queryString.stringify(params, { encode: true, sort: false }) }`
+}
+
+/** PNG GetLegendGraphic URL (default floating-legend image). */
+export default function buildLegendUrl (layerData) {
+  return buildLegendRequestUrl(layerData, {
+    format: 'image/png',
+    includeLegendOptions: true,
+  })
+}
+
+/** GeoServer JSON GetLegendGraphic URL (machine-readable class list). */
+export function buildLegendJsonUrl (layerData) {
+  return buildLegendRequestUrl(layerData, {
+    format: 'application/json',
+    includeLegendOptions: false,
+  })
 }

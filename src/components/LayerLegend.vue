@@ -56,20 +56,21 @@
               :style="legendBodyStyle(layer)"
             >
               <div
-                v-if="layer.legendMode === 'categories'"
+                v-if="usesHtmlCategoryLegend(layer)"
                 class="legend-categories"
               >
                 <div
                   v-for="row in getCategoryRows(layer.id)"
-                  :key="row.value"
+                  :key="row.value === '' ? '__empty__' : row.value"
                   class="legend-category-row"
                   :class="{ 'legend-category-row--dimmed': row.dimmed }"
                 >
                   <span
                     class="legend-category-swatch"
+                    :class="{ 'legend-category-swatch--square': layer.legendSwatch === 'square' || isFillLegend(layer) }"
                     :style="{ backgroundColor: row.color }"
                   />
-                  <span class="legend-category-label">{{ row.value }}</span>
+                  <span class="legend-category-label">{{ row.label || row.value }}</span>
                 </div>
                 <div
                   v-if="getCategoryRows(layer.id).length === 0"
@@ -97,7 +98,7 @@
 <script setup>
   import { computed, ref, watch } from 'vue'
   import { useMapStore } from '@/stores/map'
-  import buildLegendUrl from '@/lib/build-legend-url'
+  import buildLegendUrl, { LEGEND_SOURCE_GET_LEGEND_GRAPHIC_JSON } from '@/lib/build-legend-url'
   import { findWorkflowLayer } from '@/lib/find-workflow-layer'
   import { isDenseLegendLayout, LEGEND_UI_DEFAULTS } from '@/lib/legend-config'
   import navigationConfig from '@/config/workflow.json'
@@ -158,8 +159,30 @@
     return mapStore.getLayerCategoryRows(layerId)
   }
 
+  /** Prefer HTML category rows; fall back to PNG if JSON legend fetch failed. */
+  function usesHtmlCategoryLegend (layer) {
+    if (layer.legendMode !== 'categories') return false
+    const data = mapStore.layerCategories[layer.id]
+    if (
+      layer.legendSource === LEGEND_SOURCE_GET_LEGEND_GRAPHIC_JSON
+      && data?.error
+    ) {
+      return false
+    }
+    return true
+  }
+
+  function isFillLegend (layer) {
+    const cfg = mapStore.layersConfig.find(c => c.id === layer.id)
+    return cfg?.vectorType === 'fill' || cfg?.categoryStyle?.geometry === 'fill'
+  }
+
   function legendBodyStyle (layer) {
-    if (layer.legendMode === 'categories') return undefined
+    if (layer.legendMode === 'categories') {
+      // Only cap height when configured (long class lists); omit for short legends.
+      if (layer.legendBodyMaxHeight == null) return undefined
+      return { maxHeight: `${ layer.legendBodyMaxHeight }px` }
+    }
     const maxHeight = layer.legendBodyMaxHeight ?? LEGEND_UI_DEFAULTS.bodyMaxHeight
     return { maxHeight: `${ maxHeight }px` }
   }
@@ -199,6 +222,13 @@
   flex-direction: row-reverse;
   align-items: flex-end;
   gap: 12px;
+  /* Transparent gaps must not block map pan/zoom (same pattern as FeatureInfoPanel) */
+  pointer-events: none;
+}
+
+.legend-button,
+.legend-item-card {
+  pointer-events: auto;
 }
 
 .legend-panel {
@@ -207,6 +237,7 @@
   /* Padding keeps elevation shadows inside the overflow box (otherwise they look cropped) */
   padding: 8px;
   margin: -8px;
+  pointer-events: none;
 }
 
 .legend-panel--vertical {
@@ -296,6 +327,10 @@
   border-radius: 50%;
   flex-shrink: 0;
   border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.legend-category-swatch--square {
+  border-radius: 2px;
 }
 
 .legend-category-label {
