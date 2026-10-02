@@ -1,17 +1,20 @@
 import { defineStore } from 'pinia'
 import area from '@turf/area'
 import layersConfig from '@/config/base-layers-config.json'
+import workflowConfig from '@/config/workflow.json'
 import buildMapboxLayer from '@/lib/build-mapbox-layer'
 import { findWorkflowLayer } from '@/lib/find-workflow-layer'
 import {
   assignCategoryColors,
-  buildCategoryCircleStyle,
+  buildLiveCategoryPaint,
   buildCategoryWfsUrl,
   getDimmedCategoryColor,
   isFeatureActive,
   parsePairKey,
   tabulateCategories,
 } from '@/lib/category-style'
+import { LEGEND_SOURCE_GET_LEGEND_GRAPHIC_JSON } from '@/lib/build-legend-url'
+import { fetchWmsLegendCategories } from '@/lib/fetch-wms-legend-categories'
 import { pickLayerLegendFields } from '@/lib/legend-config'
 import { useAppStore } from '@/stores/app'
 
@@ -38,8 +41,8 @@ function normalizeLayerUrlForBrowser (rawUrl) {
   return rawUrl.replace('://host.docker.internal:', '://localhost:')
 }
 
-function resolveCategoryLoadOptions (layerId, overrides = {}) {
-  const layerConfig = layersConfig.find(cfg => cfg.id === layerId)
+function resolveCategoryLoadOptions (layerId, overrides = {}, layersConfigList = layersConfig) {
+  const layerConfig = layersConfigList.find(cfg => cfg.id === layerId)
   const workflowLayer = findWorkflowLayer(layerId)
   const filter = workflowLayer?.attributeFilter || {}
   const style = layerConfig?.categoryStyle || {}
@@ -56,6 +59,13 @@ function resolveCategoryLoadOptions (layerId, overrides = {}) {
   const emptySecondaryLabel = overrides.emptySecondaryLabel
     || filter.emptySecondaryLabel
     || 'Geen categorie'
+  const match = overrides.match || style.match || 'token'
+  const includeEmpty = overrides.includeEmpty !== undefined
+    ? overrides.includeEmpty
+    : (style.empty?.showInLegend !== false && match === 'exact')
+  const emptyLabel = overrides.emptyLabel
+    || style.empty?.label
+    || null
 
   const propertyNames = [ attributeKey, secondaryAttributeKey ].filter(Boolean)
   const wfsUrl = overrides.wfsUrl
@@ -69,6 +79,9 @@ function resolveCategoryLoadOptions (layerId, overrides = {}) {
     secondaryAttributeKey,
     delimiter,
     emptySecondaryLabel,
+    match,
+    includeEmpty,
+    emptyLabel,
     wfsUrl,
     categoryStyle: style,
   }
@@ -76,7 +89,7 @@ function resolveCategoryLoadOptions (layerId, overrides = {}) {
 
 export const useMapStore = defineStore('map', {
   state: () => ({
-    layersConfig,
+    layersConfig: layersConfig.map(cfg => ({ ...cfg })),
     staticLayerIds: layersConfig.map(cfg => cfg.id),
     mapboxLayers: [],
     layerVisibility: {},
@@ -90,12 +103,42 @@ export const useMapStore = defineStore('map', {
     activeRegion: null,
     activeRegionId: null,
     hoveredFeature: null,
+    /**
+     * Durable map feature committed on step confirm (commitSelectionOnConfirm).
+     * Independent of activeRegion so later feature inspection does not clear it.
+     * Shape: { layerId, featureId, source, sourceLayer }
+     */
+    committedSelection: null,
   }),
 
   getters: {
+    /**
+     * True when committedSelection exists and the active (or progressed) step
+     * is at or after the first workflow step with committedSelectionOutline.fromHere.
+     */
+    isCommittedOutlineVisible: (state) => {
+      if (!state.committedSelection) return false
+      const steps = workflowConfig.steps || []
+      const fromIndex = steps.findIndex(s => s.committedSelectionOutline?.fromHere === true)
+      if (fromIndex < 0) return false
+
+      const appStore = useAppStore()
+      if (appStore.activeMenu) {
+        const activeIndex = steps.findIndex(s => s.id === appStore.activeMenu)
+        return activeIndex >= fromIndex
+      }
+
+      // Menu closed: keep outline once the fromHere step is reachable
+      const fromStep = steps[fromIndex]
+      return Boolean(fromStep && appStore.isStepAvailable(fromStep))
+    },
+
     visibleMapboxLayers: (state) => {
       const visible = []
       for (const layer of state.mapboxLayers) {
+        if (layer.id.endsWith('__outline')) {
+          continue
+        }
         if (state.layerVisibility[layer.id] === true) {
           const filter = state.layerFilters[layer.id]
           const categoryPaint = buildLiveCategoryStyle(state, layer.id)
@@ -113,6 +156,7 @@ export const useMapStore = defineStore('map', {
             }
           }
           visible.push(next)
+          // Category fill outlines are managed inside MapLayer (same source lifecycle)
         } else if (layer.id.endsWith('_raster')) {
           // Raster layers with '_raster' suffix are shown when their base ID is visible
           const baseId = layer.id.replace('_raster', '')
@@ -144,14 +188,32 @@ export const useMapStore = defineStore('map', {
       const data = state.layerCategories[layerId]
       if (!data?.values?.length) return []
       const layerConfig = state.layersConfig.find(cfg => cfg.id === layerId)
-      const dimColor = getDimmedCategoryColor(layerConfig?.categoryStyle)
+      const style = layerConfig?.categoryStyle || {}
+      const dimColor = getDimmedCategoryColor(style)
+      const labelJoin = style.legend?.labelJoin ?? null
+      const delimiter = style.delimiter || ';'
+      const emptyLabel = style.empty?.label || 'No applicable NbS'
+
       return data.values.map(value => {
         const dimmed = isPrimaryCategoryDimmed(state, layerId, value)
-        const categoryColor = data.colorByValue?.[value] || '#9e9e9e'
+        const categoryColor = value === ''
+          ? (style.empty?.color || '#e0e0e0')
+          : (data.colorByValue?.[value] || '#9e9e9e')
+        const option = data.options?.find(o => o.value === value)
+        let label
+        if (value === '') {
+          label = emptyLabel
+        } else if (labelJoin) {
+          label = String(value).split(delimiter).map(s => s.trim()).filter(Boolean).join(labelJoin)
+        } else {
+          label = option?.label || value
+        }
         return {
           value,
+          label,
           color: dimmed ? dimColor : categoryColor,
           dimmed,
+          count: option?.count,
         }
       })
     },
@@ -175,6 +237,9 @@ export const useMapStore = defineStore('map', {
 
           const layerConfig = state.layersConfig.find(config => config.id === layerId)
           if (layerConfig?.showInLegend === false) {
+            continue
+          }
+          if (layerConfig?.dynamic === true && (!layerConfig.url || !layerConfig.layer)) {
             continue
           }
           if (layerConfig && layerConfig.url && layerConfig.layer) {
@@ -208,6 +273,8 @@ export const useMapStore = defineStore('map', {
     initializeMapboxLayers () {
       const configMap = new Map()
       for (const layerConfig of this.layersConfig) {
+        // Dynamic slots are filled later by process outputActions
+        if (layerConfig.dynamic === true && !layerConfig.url) continue
         if (!configMap.has(layerConfig.id)) {
           configMap.set(layerConfig.id, [])
         }
@@ -325,7 +392,45 @@ export const useMapStore = defineStore('map', {
         return this.categoryLoadPromises[layerId]
       }
 
-      const options = resolveCategoryLoadOptions(layerId, overrides)
+      const layerConfig = this.layersConfig.find(cfg => cfg.id === layerId)
+      const legendSource = overrides.legendSource || layerConfig?.legendSource || null
+
+      // Opt-in: HTML rows from GeoServer GetLegendGraphic JSON (LayerLegend falls
+      // back to the PNG legend when this path sets error).
+      if (legendSource === LEGEND_SOURCE_GET_LEGEND_GRAPHIC_JSON) {
+        if (!layerConfig?.url || !layerConfig?.layer) return null
+        const hideNoData = overrides.hideNoData !== undefined
+          ? overrides.hideNoData
+          : Boolean(layerConfig.legendHideNoData)
+
+        const promise = (async () => {
+          try {
+            const entry = await fetchWmsLegendCategories(layerConfig, { hideNoData })
+            this.layerCategories[layerId] = entry
+            return entry
+          } catch (error) {
+            console.error(`[map] Failed to load WMS JSON legend for ${ layerId }:`, error)
+            this.layerCategories[layerId] = {
+              loaded: true,
+              source: LEGEND_SOURCE_GET_LEGEND_GRAPHIC_JSON,
+              values: [],
+              options: [],
+              groups: [],
+              hierarchical: false,
+              colorByValue: {},
+              error: 'Unable to load legend categories.',
+            }
+            return this.layerCategories[layerId]
+          } finally {
+            delete this.categoryLoadPromises[layerId]
+          }
+        })()
+
+        this.categoryLoadPromises[layerId] = promise
+        return promise
+      }
+
+      const options = resolveCategoryLoadOptions(layerId, overrides, this.layersConfig)
       if (!options) return null
 
       const promise = (async () => {
@@ -336,14 +441,25 @@ export const useMapStore = defineStore('map', {
           const features = Array.isArray(data?.features) ? data.features : []
           const table = tabulateCategories(features, options)
           const colorByValue = assignCategoryColors(
-            table.values,
+            table.values.filter(v => v !== ''),
             options.categoryStyle?.colors || {},
           )
+          if (table.values.includes('')) {
+            colorByValue[''] = options.categoryStyle?.empty?.color || '#e0e0e0'
+          }
+
+          // Optional frequency sort for legend (exact-match already sorts by count)
+          let values = table.values
+          let categoryOptions = table.options
+          if (options.categoryStyle?.legend?.sort === 'count' && options.match !== 'exact') {
+            categoryOptions = [ ...table.options ].sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
+            values = categoryOptions.map(o => o.value)
+          }
 
           const entry = {
             loaded: true,
-            values: table.values,
-            options: table.options,
+            values,
+            options: categoryOptions,
             groups: table.groups,
             hierarchical: table.hierarchical,
             colorByValue,
@@ -377,15 +493,40 @@ export const useMapStore = defineStore('map', {
         properties: feature.properties || {},
         feature: feature,
       }
-      this.activeRegionId =
-        regionIdProperty && feature.properties && feature.properties[regionIdProperty] != null
-          ? feature.properties[regionIdProperty]
-          : null
+      // Only update activeRegionId for region-selection layers; keep prior id when
+      // inspecting other features (e.g. NbS hexagons) so process inputs stay valid.
+      if (regionIdProperty && feature.properties && feature.properties[regionIdProperty] != null) {
+        this.activeRegionId = feature.properties[regionIdProperty]
+      }
     },
 
-    clearActiveRegion () {
+    clearActiveRegion ({ clearRegionId = true } = {}) {
       this.activeRegion = null
-      this.activeRegionId = null
+      if (clearRegionId) {
+        this.activeRegionId = null
+      }
+    },
+
+    /**
+     * Persist the current activeRegion as a committed selection (generic; any layer).
+     * Does not clear activeRegionId. Callers clear interactive highlight via MapLayer watch.
+     */
+    commitSelectionFromActive () {
+      const region = this.activeRegion
+      const feature = region?.feature
+      if (!region?.layerId || !feature || feature.id == null) return false
+
+      this.committedSelection = {
+        layerId: region.layerId,
+        featureId: feature.id,
+        source: feature.source ?? region.layerId,
+        sourceLayer: feature.sourceLayer ?? null,
+      }
+      return true
+    },
+
+    clearCommittedSelection () {
+      this.committedSelection = null
     },
 
     setHoveredFeature (layerId, feature) {
@@ -404,29 +545,85 @@ export const useMapStore = defineStore('map', {
       this.hoveredFeature = null
     },
 
+    /**
+     * Add or fill a map layer from a process response / runtime config.
+     *
+     * Slot mode (preferred): layerConfig.id matches a `dynamic: true` entry in
+     * base-layers-config.json. URL/layer from the process fill that slot; paint,
+     * categoryStyle, format, etc. come from the slot definition.
+     *
+     * Legacy mode: no matching slot → create an ad-hoc PNG raster layer (previous behaviour).
+     */
     addDynamicLayer (layerConfig) {
-      const existing = this.mapboxLayers.find(l => l.id === layerConfig.id)
-      if (existing) return
+      if (!layerConfig?.id && !layerConfig?.layer) return
+
+      const slotId = layerConfig.slotId || layerConfig.id
+      const slotIndex = this.layersConfig.findIndex(
+        cfg => cfg.id === slotId && cfg.dynamic === true,
+      )
+      const isSlot = slotIndex >= 0
 
       const normalizedUrl = normalizeLayerUrlForBrowser(layerConfig.url)
+      const geoserverLayer = layerConfig.layer || layerConfig.id
+
+      if (isSlot) {
+        const slot = this.layersConfig[slotIndex]
+        const merged = {
+          ...slot,
+          url: normalizedUrl,
+          layer: geoserverLayer,
+          name: layerConfig.name || slot.name || slotId,
+          // Keep slot id stable for LayerList / legend / featureInfo
+          id: slotId,
+        }
+        // Replace slot metadata so legend/WFS resolve the live URL
+        this.layersConfig[slotIndex] = merged
+
+        const built = buildMapboxLayer(merged)
+        if (!built) return
+
+        const existingIdx = this.mapboxLayers.findIndex(l => l.id === slotId)
+        if (existingIdx >= 0) {
+          this.mapboxLayers.splice(existingIdx, 1, built)
+        } else {
+          this.mapboxLayers.push(built)
+        }
+
+        if (this.layerVisibility[slotId] === undefined) {
+          this.layerVisibility[slotId] = true
+        }
+
+        // Categories may change when the slot is refilled
+        delete this.layerCategories[slotId]
+        delete this.categoryLoadPromises[slotId]
+        if (merged.categoryStyle || merged.legendMode === 'categories') {
+          this.ensureLayerCategories(slotId)
+        }
+        return
+      }
+
+      // Legacy: ad-hoc dynamic PNG layer keyed by GeoServer layer name
+      const legacyId = layerConfig.id || geoserverLayer
+      const existing = this.mapboxLayers.find(l => l.id === legacyId)
+      if (existing) return
+
       const built = buildMapboxLayer({
         ...layerConfig,
+        id: legacyId,
         url: normalizedUrl,
-        format: 'image/png',
+        format: layerConfig.format || 'image/png',
       })
       if (built) {
         this.mapboxLayers.push(built)
-        this.layerVisibility[layerConfig.id] = true
+        this.layerVisibility[legacyId] = true
 
-        // Ensure dynamic layers also show up in the legend by
-        // creating a corresponding layersConfig entry when needed.
-        const hasConfig = this.layersConfig.some(cfg => cfg.id === layerConfig.id)
+        const hasConfig = this.layersConfig.some(cfg => cfg.id === legacyId)
         if (!hasConfig) {
           this.layersConfig.push({
-            id: layerConfig.id,
+            id: legacyId,
             url: layerConfig.url,
-            layer: layerConfig.layer,
-            name: layerConfig.name || layerConfig.id,
+            layer: geoserverLayer,
+            name: layerConfig.name || legacyId,
             dynamic: true,
           })
         }
@@ -434,33 +631,59 @@ export const useMapStore = defineStore('map', {
     },
 
     removeDynamicLayer (layerId) {
-      this.mapboxLayers = this.mapboxLayers.filter(l => l.id !== layerId)
-      delete this.layerVisibility[layerId]
+      if (!layerId) return
 
-      // Remove any dynamic-only config entry so legends stay in sync
-      this.layersConfig = this.layersConfig.filter(cfg => !(cfg.id === layerId && cfg.dynamic))
+      const isDeclaredSlot = this.staticLayerIds.includes(layerId)
+        && this.layersConfig.some(cfg => cfg.id === layerId && cfg.dynamic === true)
+
+      this.mapboxLayers = this.mapboxLayers.filter(l => l.id !== layerId)
+      delete this.layerCategories[layerId]
+      delete this.categoryLoadPromises[layerId]
+
+      if (isDeclaredSlot) {
+        const baseSlot = layersConfig.find(cfg => cfg.id === layerId)
+        const idx = this.layersConfig.findIndex(cfg => cfg.id === layerId)
+        if (idx >= 0 && baseSlot) {
+          this.layersConfig[idx] = { ...baseSlot }
+        }
+        return
+      }
+
+      delete this.layerVisibility[layerId]
+      this.layersConfig = this.layersConfig.filter(
+        cfg => !(cfg.id === layerId && cfg.dynamic === true),
+      )
     },
 
     /**
-     * Removes all dynamically added layers (those not present in the static layersConfig).
+     * Removes runtime layers. Declared dynamic slots are reset to placeholders.
      */
     clearDynamicLayers () {
-      const staticIds = new Set(this.staticLayerIds)
+      const declaredSlotIds = new Set(
+        layersConfig.filter(cfg => cfg.dynamic === true).map(cfg => cfg.id),
+      )
+      const staticNonSlotIds = new Set(
+        layersConfig.filter(cfg => cfg.dynamic !== true).map(cfg => cfg.id),
+      )
 
-      // Remove all non-static layers from the map and visibility state
       this.mapboxLayers = this.mapboxLayers.filter(layer => {
         const baseId = layer.id.endsWith('_raster')
           ? layer.id.replace('_raster', '')
           : layer.id
-        const isStatic = staticIds.has(baseId)
-        if (!isStatic) {
+        if (declaredSlotIds.has(baseId)) {
           delete this.layerVisibility[layer.id]
+          delete this.layerCategories[baseId]
+          delete this.categoryLoadPromises[baseId]
+          return false
         }
-        return isStatic
+        if (!staticNonSlotIds.has(baseId)) {
+          delete this.layerVisibility[layer.id]
+          return false
+        }
+        return true
       })
 
-      // Strip any dynamic layer configs so legends update accordingly
-      this.layersConfig = this.layersConfig.filter(cfg => staticIds.has(cfg.id))
+      this.layersConfig = layersConfig.map(cfg => ({ ...cfg }))
     },
 
     resetWorkflowState () {
@@ -473,6 +696,7 @@ export const useMapStore = defineStore('map', {
       this.layerFilterConfig = {}
       this.layerDimMode = {}
       this.categoryLoadPromises = {}
+      this.clearCommittedSelection()
       this.clearActiveRegion()
       this.clearHoveredFeature()
     },
@@ -481,16 +705,14 @@ export const useMapStore = defineStore('map', {
 
 function buildLiveCategoryStyle (state, layerId) {
   const layerConfig = state.layersConfig.find(cfg => cfg.id === layerId)
-  const categoryStyle = layerConfig?.categoryStyle
-  if (!categoryStyle) return null
+  if (!layerConfig?.categoryStyle) return null
 
   const categories = state.layerCategories[layerId]
-  const colorByValue = categories?.colorByValue || {}
   const dimMode = state.layerDimMode[layerId]
   const selectedKeys = dimMode ? (state.layerFilterSelection[layerId] ?? null) : null
   const filterConfig = dimMode ? state.layerFilterConfig[layerId] : null
 
-  return buildCategoryCircleStyle(categoryStyle, colorByValue, {
+  return buildLiveCategoryPaint(layerConfig, categories, {
     selectedKeys,
     filterConfig,
   })

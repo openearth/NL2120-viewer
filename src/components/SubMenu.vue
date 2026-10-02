@@ -22,6 +22,38 @@
       </v-list-item>
 
       <div class="sub-menu-drawer__content">
+        <div
+          v-if="showDrawerStatusLoading"
+          class="sub-menu-drawer__status pa-4"
+        >
+          <div class="d-flex align-center ga-3 mb-2">
+            <v-progress-circular
+              indeterminate
+              size="22"
+              width="2"
+              color="primary"
+            />
+            <span class="text-body-2">{{ loadingText }}</span>
+          </div>
+        </div>
+        <div
+          v-else-if="processStatus === 'error'"
+          class="sub-menu-drawer__status pa-4"
+        >
+          <p class="text-body-2 text-error mb-3">
+            {{ errorText }}
+          </p>
+          <v-btn
+            color="primary"
+            variant="tonal"
+            size="small"
+            block
+            @click="retryProcess"
+          >
+            Retry
+          </v-btn>
+        </div>
+
         <component
           :is="comp.component"
           v-for="(comp, index) in validComponents"
@@ -70,7 +102,9 @@
   import { useAppStore } from '@/stores/app'
   import { useMapStore } from '@/stores/map'
   import { executeProcessConfig } from '@/lib/ogc-process/execute-config'
+  import { resolveInputs } from '@/lib/ogc-process/resolve-input'
   import { isSelectionMissing } from '@/lib/selection-utils'
+  import { showButtonLoading, showDrawerLoading } from '@/lib/process-status'
   import FlashHighlight from '@/components/FlashHighlight.vue'
 
   const props = defineProps({
@@ -86,15 +120,39 @@
     /** When set, footer Confirm stays disabled until each key has a value in appStore.selections. */
     requiredSelections: { type: Array, default: () => [] },
     process: { type: Object, default: null },
+    /** Step lifecycle actions, e.g. setLayerVisibility when the submenu opens. */
+    onOpen: { type: Array, default: () => [] },
+    /**
+     * When true, Confirm persists the current map selection as committedSelection
+     * (durable outline; independent of later feature inspection).
+     */
+    commitSelectionOnConfirm: { type: Boolean, default: false },
   })
 
   const store = useAppStore()
   const mapStore = useMapStore()
   const loadedComponents = shallowRef([])
   const stepReadyPayload = shallowRef(null)
+  const processStatus = shallowRef(null) // null | 'loading' | 'error' | 'success'
+  const lastStepOpenSignature = shallowRef(null)
+  const lastProcessPayload = shallowRef({})
+  const lastProcessKind = shallowRef(null) // 'stepOpen' | 'component'
+  const onOpenRanOnce = shallowRef(false)
   provide('stepId', props.menuId)
+  provide('processStatus', processStatus)
+  provide('processShowButtonLoading', computed(() => showButtonLoading(props.process)))
 
   const modules = import.meta.glob('@/components/*.vue')
+
+  const loadingText = computed(() =>
+    props.process?.loadingText || 'Running analysis…',
+  )
+  const errorText = computed(() =>
+    props.process?.errorText || 'The process could not be completed.',
+  )
+  const showDrawerStatusLoading = computed(() =>
+    processStatus.value === 'loading' && showDrawerLoading(props.process),
+  )
 
   const loadComponents = async () => {
     const loaded = []
@@ -129,6 +187,7 @@
 
   const confirmButtonDisabled = computed(() => {
     if (!props.requiresConfirmation) return false
+    if (processStatus.value === 'loading') return true
     if (!requiredSelectionsSatisfied.value) return true
     const p = stepReadyPayload.value
     if (!p) return true
@@ -156,24 +215,125 @@
     },
   })
 
+  function applyOnOpenActions () {
+    if (!Array.isArray(props.onOpen) || props.onOpen.length === 0) return
+    for (const action of props.onOpen) {
+      if (!action || action.action !== 'setLayerVisibility') continue
+      if (action.once && onOpenRanOnce.value) continue
+      if (!action.layerId) continue
+      mapStore.setLayerVisibility(action.layerId, action.visible === true)
+    }
+    onOpenRanOnce.value = true
+  }
+
+  function processInputSignature () {
+    if (!props.process?.inputs?.length) return 'no-inputs'
+    const resolved = resolveInputs(props.process.inputs, {
+      payload: {},
+      stores: { app: store, map: mapStore },
+    })
+    return JSON.stringify(resolved.map(({ id, value }) => [ id, value ]))
+  }
+
+  async function executeProcessOnly (payload = {}) {
+    if (!props.process) return null
+    return executeProcessConfig(props.process, {
+      payload,
+      appStore: store,
+      mapStore,
+    })
+  }
+
+  /**
+   * Shared loading / error / success status for stepOpen and component process runs.
+   */
+  async function runProcessWithStatus (payload = {}, { kind = 'component' } = {}) {
+    lastProcessKind.value = kind
+    lastProcessPayload.value = payload || {}
+    processStatus.value = 'loading'
+    // Invalidate Confirm until this run succeeds (component + confirmationSource process)
+    if (kind === 'component' && props.confirmationSource === 'process') {
+      stepReadyPayload.value = null
+    }
+    try {
+      const result = await executeProcessOnly(payload || {})
+      processStatus.value = 'success'
+      if (props.requiresConfirmation && props.confirmationSource === 'process') {
+        stepReadyPayload.value = result != null ? { result } : {}
+      } else if (!props.requiresConfirmation && props.completionEvent === 'auto') {
+        completeStep()
+      }
+      return result
+    } catch (error) {
+      processStatus.value = 'error'
+      console.error(`Process request failed for step "${ props.menuId }" (${ kind }):`, error)
+      return null
+    }
+  }
+
+  async function runStepOpenProcess ({ force = false } = {}) {
+    if (!props.process || props.process.trigger !== 'stepOpen') return
+
+    const rerun = props.process.rerun || 'always'
+    const signature = processInputSignature()
+    if (
+      !force
+      && rerun === 'onInputChange'
+      && lastStepOpenSignature.value === signature
+      && processStatus.value === 'success'
+    ) {
+      return
+    }
+
+    await runProcessWithStatus({}, { kind: 'stepOpen' })
+    if (processStatus.value === 'success') {
+      lastStepOpenSignature.value = signature
+    }
+  }
+
+  function retryProcess () {
+    if (lastProcessKind.value === 'stepOpen') {
+      runStepOpenProcess({ force: true })
+      return
+    }
+    runProcessWithStatus(lastProcessPayload.value || {}, { kind: 'component' })
+  }
+
   // --- Step completion (independent of WPS) ---
 
   watch(isOpen, async (open) => {
     if (open) {
       stepReadyPayload.value = null
-    }
-    if (open && props.completionEvent === 'auto' && !store.isStepCompleted(props.menuId)) {
-      completeStep()
-    }
-    if (open && props.confirmationSource === 'process' && props.process?.trigger === 'stepOpen') {
-      try {
-        const result = await executeProcessOnly({})
-        stepReadyPayload.value = result != null ? { result } : {}
-      } catch (error) {
-        console.error(`Process request failed for step "${ props.menuId }" (stepOpen):`, error)
+      applyOnOpenActions()
+      // Drop stale errors; keep 'success' so stepOpen rerun:onInputChange can skip
+      if (processStatus.value === 'error') {
+        processStatus.value = null
       }
     }
+    if (open && props.completionEvent === 'auto' && !store.isStepCompleted(props.menuId)) {
+      // Defer auto-complete when a stepOpen process owns readiness
+      if (!(props.process?.trigger === 'stepOpen')) {
+        completeStep()
+      }
+    }
+    if (open && props.process?.trigger === 'stepOpen') {
+      await runStepOpenProcess()
+    }
   })
+
+  // After Restart, allow onOpen actions and stepOpen process to run again
+  watch(
+    () => store.completedSteps.length,
+    (len, prevLen) => {
+      if (prevLen > 0 && len === 0) {
+        onOpenRanOnce.value = false
+        lastStepOpenSignature.value = null
+        lastProcessPayload.value = {}
+        lastProcessKind.value = null
+        processStatus.value = null
+      }
+    },
+  )
 
   if (props.confirmationSource === 'mapClick') {
     watch([isOpen, () => mapStore.activeRegion], ([open, region]) => {
@@ -201,15 +361,6 @@
     })
   }
 
-  async function executeProcessOnly (payload = {}) {
-    if (!props.process) return null
-    return executeProcessConfig(props.process, {
-      payload,
-      appStore: store,
-      mapStore,
-    })
-  }
-
   async function executeProcess (payload = {}) {
     try {
       await executeProcessOnly(payload)
@@ -234,12 +385,8 @@
 
   async function onRunProcess (payload) {
     if (props.process?.trigger !== 'component') return
-    try {
-      const result = await executeProcessOnly(payload || {})
-      stepReadyPayload.value = result != null ? { result } : {}
-    } catch (error) {
-      console.error(`Process request failed for step "${ props.menuId }" (run-process):`, error)
-    }
+    if (processStatus.value === 'loading') return
+    await runProcessWithStatus(payload || {})
   }
 
   async function onStepComplete (payload) {
@@ -253,8 +400,14 @@
   async function onConfirmClick () {
     if (props.requiresConfirmation && !requiredSelectionsSatisfied.value) return
     if (props.requiresConfirmation && !stepReadyPayload.value) return
+    if (processStatus.value === 'loading') return
     const payload = stepReadyPayload.value || {}
     stepReadyPayload.value = null
+
+    if (props.commitSelectionOnConfirm) {
+      mapStore.commitSelectionFromActive()
+    }
+
     if (props.confirmationSource === 'process' || props.confirmationSource === 'mapClick') {
       completeStep()
       store.openNextStep(props.menuId)
@@ -310,5 +463,9 @@
 .drawer-title {
   white-space: normal;
   margin-top: 10px;
+}
+
+.sub-menu-drawer__status {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 }
 </style>

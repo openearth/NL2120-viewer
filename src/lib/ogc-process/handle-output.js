@@ -3,7 +3,7 @@
  *
  * Supported actions:
  *   - storeValue: saves a value (or sub-path of response) into appStore.processResults
- *   - addLayer:   adds a dynamic layer to the map via mapStore
+ *   - addLayer:   adds / fills a dynamic layer (optional stable `layerId` slot)
  *   - removeLayer: removes a dynamic layer that was previously added
  *
  * Viewer-style payloads: array of `{ folder, contents: [{ name, layer, url }] }` or a single folder object.
@@ -18,6 +18,7 @@
  * @property {string} [path] - Dot path into response; omit or "response" for full body
  * @property {string} [storeAs] - storeValue: key under processResults
  * @property {Object} [layerConfig] - addLayer: extra args for addDynamicLayer
+ * @property {string} [layerId] - addLayer/removeLayer: stable slot id from base-layers-config
  * @property {string} [fromResultKey] - removeLayer: key in processResults (previous snapshot preferred)
  */
 export function handleOutputActions (actions, response, stores, options = {}) {
@@ -40,8 +41,11 @@ export function handleOutputActions (actions, response, stores, options = {}) {
         if (!value || !stores.map?.addDynamicLayer) break
         forEachLayerOutputEntry(value, (entry) => {
           if (entry?.layer && entry?.url) {
+            const slotId = action.layerId || action.layerConfig?.slotId
             stores.map.addDynamicLayer({
-              id: entry.layer,
+              // When layerId (slot) is set, keep a stable id for LayerList / legend
+              id: slotId || entry.layer,
+              slotId: slotId || undefined,
               name: entry.name || entry.layer,
               layer: entry.layer,
               url: entry.url,
@@ -53,7 +57,12 @@ export function handleOutputActions (actions, response, stores, options = {}) {
       }
 
       case 'removeLayer': {
-        const { fromResultKey } = action
+        const { fromResultKey, layerId } = action
+        if (layerId && stores.map?.removeDynamicLayer) {
+          stores.map.removeDynamicLayer(layerId)
+          break
+        }
+
         const previousResult = fromResultKey
           ? (previousResultsByKey[fromResultKey] ?? stores.app?.processResults?.[fromResultKey])
           : null

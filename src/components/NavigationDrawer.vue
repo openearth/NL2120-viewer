@@ -67,6 +67,8 @@
     :confirm-flash-when-enabled="step.confirmFlashWhenEnabled || false"
     :required-selections="step.requiredSelections || []"
     :process="step.process || null"
+    :on-open="step.onOpen || []"
+    :commit-selection-on-confirm="step.commitSelectionOnConfirm === true"
   />
 </template>
 

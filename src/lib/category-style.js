@@ -287,9 +287,40 @@ export function tabulateCategories (features, {
   secondaryAttributeKey = null,
   delimiter = ';',
   emptySecondaryLabel = EMPTY_SECONDARY,
+  match = 'token',
+  includeEmpty = false,
+  emptyLabel = null,
 } = {}) {
   if (!attributeKey) {
     return { values: [], options: [], groups: [], hierarchical: false }
+  }
+
+  // Exact match: treat the whole attribute string as one category (incl. empty).
+  if (match === 'exact' && !secondaryAttributeKey) {
+    const counts = new Map()
+    for (const feature of features) {
+      const raw = feature?.properties?.[attributeKey]
+      const value = raw == null ? '' : String(raw).trim()
+      if (value === '' && !includeEmpty) continue
+      counts.set(value, (counts.get(value) ?? 0) + 1)
+    }
+    const options = Array.from(counts.entries())
+      .map(([ value, count ]) => ({
+        value,
+        count,
+        label: value === '' ? (emptyLabel || '—') : value,
+      }))
+      .sort((a, b) => {
+        if (a.value === '') return 1
+        if (b.value === '') return -1
+        return b.count - a.count || a.value.localeCompare(b.value)
+      })
+    return {
+      values: options.map(o => o.value),
+      options,
+      groups: [],
+      hierarchical: false,
+    }
   }
 
   if (!secondaryAttributeKey) {
@@ -300,7 +331,7 @@ export function tabulateCategories (features, {
       }
     }
     const options = Array.from(counts.entries())
-      .map(([ value, count ]) => ({ value, count }))
+      .map(([ value, count ]) => ({ value, count, label: value }))
       .sort((a, b) => a.value.localeCompare(b.value))
     return {
       values: options.map(o => o.value),
@@ -382,17 +413,82 @@ export function buildCategoryWfsUrl (layerConfig, propertyNames = []) {
   return `${ origin }/geoserver/wfs?${ params.toString() }`
 }
 
-function buildCategoryColorExpression (attribute, colorByValue, fallbackColor, delimiter) {
+/** Exact attribute equality (whole string, including empty). */
+export function buildExactMatchExpression (attribute, value) {
+  return [
+    '==',
+    [ 'to-string', [ 'coalesce', [ 'get', attribute ], '' ] ],
+    value == null ? '' : String(value),
+  ]
+}
+
+function buildCategoryMatchExpression (attribute, value, {
+  match = 'token',
+  delimiter = ';',
+} = {}) {
+  if (match === 'exact' || value === '') {
+    return buildExactMatchExpression(attribute, value)
+  }
+  return buildTokenMatchExpression(attribute, value, delimiter)
+}
+
+function buildCategoryColorExpression (attribute, colorByValue, fallbackColor, {
+  delimiter = ';',
+  match = 'token',
+} = {}) {
   const entries = Object.entries(colorByValue || {})
   if (entries.length === 0) return fallbackColor
 
   const expr = [ 'case' ]
   for (const [ value, color ] of entries) {
-    expr.push(buildTokenMatchExpression(attribute, value, delimiter))
+    expr.push(buildCategoryMatchExpression(attribute, value, { match, delimiter }))
     expr.push(color)
   }
   expr.push(fallbackColor)
   return expr
+}
+
+/** Format a category value for legend / panel labels. */
+export function formatCategoryLabel (value, {
+  labelJoin = null,
+  delimiter = ';',
+  emptyLabel = null,
+} = {}) {
+  if (value == null || String(value).trim() === '') {
+    return emptyLabel || '—'
+  }
+  if (!labelJoin) return String(value)
+  return parseDelimitedValues(value, delimiter).join(labelJoin)
+}
+
+function resolveFillOpacity (style, {
+  selectedKeys = null,
+  filterConfig = null,
+} = {}) {
+  const fillOpacity = style.fillOpacity
+  let baseOpacity = 0.75
+  if (typeof fillOpacity === 'number' && Number.isFinite(fillOpacity)) {
+    baseOpacity = fillOpacity
+  } else if (fillOpacity && typeof fillOpacity === 'object' && fillOpacity.attribute) {
+    // Future: interpolate opacity from attribute (e.g. % area)
+    const attr = fillOpacity.attribute
+    const domain = Array.isArray(fillOpacity.domain) ? fillOpacity.domain : [ 0, 100 ]
+    const range = Array.isArray(fillOpacity.range) ? fillOpacity.range : [ 0.2, 0.9 ]
+    baseOpacity = [
+      'interpolate',
+      [ 'linear' ],
+      [ 'to-number', [ 'coalesce', [ 'get', attr ], domain[0] ] ],
+      domain[0], range[0],
+      domain[1], range[1],
+    ]
+  }
+
+  const shouldDim = Array.isArray(selectedKeys) && filterConfig?.attributeKey
+  if (!shouldDim) return baseOpacity
+
+  const dimOpacity = style.dimmed?.opacity ?? 0.25
+  const activeMatch = buildActiveMatchExpression(selectedKeys, filterConfig)
+  return [ 'case', [ '!', activeMatch ], dimOpacity, baseOpacity ]
 }
 
 /** Circle paint (+ sort-key). selectedKeys null → no dimming. */
@@ -403,6 +499,7 @@ export function buildCategoryCircleStyle (categoryStyle, colorByValue, {
   const style = categoryStyle || {}
   const attribute = style.attribute
   const delimiter = style.delimiter || filterConfig?.delimiter || ';'
+  const match = style.match || 'token'
   const fallbackColor = style.fallbackColor || '#9e9e9e'
   const radius = style.radius ?? 7
   const baseStroke = style.strokeColor || '#ffffff'
@@ -416,7 +513,7 @@ export function buildCategoryCircleStyle (categoryStyle, colorByValue, {
   const dimStrokeWidth = dimmed.strokeWidth ?? baseStrokeWidth
 
   const categoryColor = attribute
-    ? buildCategoryColorExpression(attribute, colorByValue, fallbackColor, delimiter)
+    ? buildCategoryColorExpression(attribute, colorByValue, fallbackColor, { delimiter, match })
     : fallbackColor
 
   const isSelected = [ 'boolean', [ 'feature-state', 'selected' ], false ]
@@ -463,6 +560,135 @@ export function buildCategoryCircleStyle (categoryStyle, colorByValue, {
   return { paint, layout }
 }
 
+/**
+ * Fill paint for categorical polygon layers.
+ * Selection outline is drawn by a companion line layer (see buildCategoryOutlineStyle).
+ */
+export function buildCategoryFillStyle (categoryStyle, colorByValue, {
+  selectedKeys = null,
+  filterConfig = null,
+} = {}) {
+  const style = categoryStyle || {}
+  const attribute = style.attribute
+  const delimiter = style.delimiter || filterConfig?.delimiter || ';'
+  const match = style.match || 'exact'
+  const empty = style.empty || {}
+  const emptyColor = empty.color || '#e0e0e0'
+  const fallbackColor = style.fallbackColor || emptyColor
+  const outlineColor = style.outlineColor || 'rgba(66, 66, 66, 0.35)'
+  const outlineWidth = style.outlineWidth ?? 0.5
+
+  const colors = { ...(colorByValue || {}) }
+  if (empty.showInLegend !== false && !Object.prototype.hasOwnProperty.call(colors, '')) {
+    colors[''] = emptyColor
+  }
+
+  const categoryColor = attribute
+    ? buildCategoryColorExpression(attribute, colors, fallbackColor, { delimiter, match })
+    : fallbackColor
+
+  const shouldDim = Array.isArray(selectedKeys) && filterConfig?.attributeKey
+  const dimColor = getDimmedCategoryColor(style)
+  const fillColor = shouldDim
+    ? [
+      'case',
+      [ '!', buildActiveMatchExpression(selectedKeys, filterConfig) ],
+      dimColor,
+      categoryColor,
+    ]
+    : categoryColor
+
+  return {
+    paint: {
+      'fill-color': fillColor,
+      'fill-opacity': resolveFillOpacity(style, { selectedKeys, filterConfig }),
+      'fill-outline-color': outlineColor,
+    },
+    layout: {},
+    // Kept for callers that still set a thin outline on the fill layer
+    outlineWidth,
+  }
+}
+
+/** Line paint for hover/selected outline over a category fill layer. */
+export function buildCategoryOutlineStyle (categoryStyle = {}) {
+  return buildFeatureStateOutlineStyle({
+    selected: categoryStyle.selected,
+    hover: categoryStyle.hover,
+    idleColor: categoryStyle.outlineColor,
+    idleWidth: categoryStyle.outlineWidth,
+    selectedStateKey: 'selected',
+    hoverStateKey: 'hover',
+  })
+}
+
+/**
+ * Outline for a durable committed selection (config: selectionStyle.outline).
+ * Uses feature-state `committed` so it does not conflict with interactive yellow fill.
+ */
+export function buildCommittedOutlineStyle (selectionStyle = {}) {
+  const outline = selectionStyle.outline || selectionStyle
+  return buildFeatureStateOutlineStyle({
+    selected: outline.selected,
+    hover: outline.hover,
+    idleColor: outline.idle?.strokeColor ?? 'rgba(0, 0, 0, 0)',
+    idleWidth: outline.idle?.strokeWidth ?? 0,
+    selectedStateKey: 'committed',
+    hoverStateKey: null,
+  })
+}
+
+/**
+ * Generic Mapbox line paint driven by feature-state keys.
+ * @param {object} options
+ * @param {object} [options.selected]
+ * @param {object} [options.hover]
+ * @param {string} [options.idleColor]
+ * @param {number} [options.idleWidth]
+ * @param {string} [options.selectedStateKey='selected']
+ * @param {string|null} [options.hoverStateKey='hover']
+ */
+export function buildFeatureStateOutlineStyle ({
+  selected = {},
+  hover = {},
+  idleColor = 'rgba(66, 66, 66, 0.35)',
+  idleWidth = 0.5,
+  selectedStateKey = 'selected',
+  hoverStateKey = 'hover',
+} = {}) {
+  const isSelected = selectedStateKey
+    ? [ 'boolean', [ 'feature-state', selectedStateKey ], false ]
+    : false
+  const isHovered = hoverStateKey
+    ? [ 'boolean', [ 'feature-state', hoverStateKey ], false ]
+    : false
+
+  const colorExpr = [ 'case' ]
+  const widthExpr = [ 'case' ]
+  if (selectedStateKey) {
+    colorExpr.push(isSelected, selected.strokeColor || '#e53935')
+    widthExpr.push(isSelected, selected.strokeWidth ?? 4)
+  }
+  if (hoverStateKey) {
+    colorExpr.push(isHovered, hover.strokeColor || '#212121')
+    widthExpr.push(isHovered, hover.strokeWidth ?? 2)
+  }
+  colorExpr.push(idleColor)
+  widthExpr.push(idleWidth)
+
+  return {
+    paint: {
+      'line-color': colorExpr,
+      'line-width': widthExpr,
+      'line-opacity': 1,
+    },
+    layout: {
+      'line-join': 'round',
+      'line-cap': 'round',
+    },
+  }
+}
+
 export function getInitialCategoryCirclePaint (categoryStyle) {
   const style = categoryStyle || {}
   return {
@@ -474,7 +700,47 @@ export function getInitialCategoryCirclePaint (categoryStyle) {
   }
 }
 
+export function getInitialCategoryFillPaint (categoryStyle) {
+  const style = categoryStyle || {}
+  const emptyColor = style.empty?.color || '#e0e0e0'
+  const fillOpacity = typeof style.fillOpacity === 'number' ? style.fillOpacity : 0.75
+  return {
+    'fill-color': style.fallbackColor || emptyColor,
+    'fill-opacity': fillOpacity,
+    'fill-outline-color': style.outlineColor || 'rgba(66, 66, 66, 0.35)',
+  }
+}
+
+/**
+ * Build live category paint/layout for circle or fill layers.
+ * Returns null when the layer has no categoryStyle.
+ */
+export function buildLiveCategoryPaint (layerConfig, categories, {
+  selectedKeys = null,
+  filterConfig = null,
+} = {}) {
+  const categoryStyle = layerConfig?.categoryStyle
+  if (!categoryStyle) return null
+
+  const colorByValue = categories?.colorByValue || {}
+  const options = { selectedKeys, filterConfig }
+  const vectorType = layerConfig.vectorType || layerConfig.type
+
+  if (vectorType === 'fill' || categoryStyle.geometry === 'fill') {
+    return buildCategoryFillStyle(categoryStyle, colorByValue, options)
+  }
+  return buildCategoryCircleStyle(categoryStyle, colorByValue, options)
+}
+
 /** Grey used for dimmed map circles and matching UI swatches. */
 export function getDimmedCategoryColor (categoryStyle) {
   return categoryStyle?.dimmed?.color || '#bdbdbd'
 }
+
+/** Outline companion layer id for a fill / selection outline layer. */
+export function categoryOutlineLayerId (layerId) {
+  return `${ layerId }__outline`
+}
+
+/** Alias — same companion id used for categoryStyle and selectionStyle outlines. */
+export const selectionOutlineLayerId = categoryOutlineLayerId
