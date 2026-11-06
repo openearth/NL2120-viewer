@@ -55,6 +55,8 @@
     step: { type: Number, default: 1 },
     defaultValue: { type: Number, default: 0 },
     defaultValueSource: { type: String, default: null },
+    /** When set, valid values are written to app.selections[selectionKey] (opt-in). */
+    selectionKey: { type: String, default: null },
     showCalcButton: { type: Boolean, default: false },
     requiresCalcCondition: { type: Boolean, default: false },
     calcConditionSource: { type: String, default: null },
@@ -107,8 +109,12 @@
   })
 
   watch(value, (newVal) => {
-    if (newVal != null && newVal >= props.min && newVal <= props.max) {
+    const valid = newVal != null && newVal >= props.min && newVal <= props.max
+    if (valid) {
       emit('step-ready', { value: newVal })
+    }
+    if (props.selectionKey) {
+      appStore.setSelection(props.selectionKey, valid ? newVal : null)
     }
   }, { immediate: true })
 

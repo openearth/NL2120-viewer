@@ -182,6 +182,7 @@ Omit these keys → no committed outline (other products unchanged). Interactive
 | `initialSetup` | Restart button and/or bootstrap `process` |
 | `legendStack` | `"vertical"` (default) or `"horizontal"` for the floating legend |
 | `infoDialog` | Optional markdown dialog (see below) |
+| `userSelectionsOverview` | Optional bottom-left summary of confirmed selections (opt-in; omit or `enabled: false` to disable) |
 | `steps` | Ordered wizard steps |
 
 ### `initialSetup`
