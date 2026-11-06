@@ -105,7 +105,9 @@
   import { resolveInputs } from '@/lib/ogc-process/resolve-input'
   import { isSelectionMissing } from '@/lib/selection-utils'
   import { showButtonLoading, showDrawerLoading } from '@/lib/process-status'
+  import { commitRegionSummary } from '@/lib/user-selections-overview'
   import FlashHighlight from '@/components/FlashHighlight.vue'
+  import workflowConfig from '@/config/workflow.json'
 
   const props = defineProps({
     menuId: { type: String, required: true },
@@ -406,6 +408,15 @@
 
     if (props.commitSelectionOnConfirm) {
       mapStore.commitSelectionFromActive()
+      // Optional durable region text for UserSelectionsOverview
+      const overview = workflowConfig.userSelectionsOverview
+      if (overview?.enabled && overview.regionSummary) {
+        commitRegionSummary(
+          overview,
+          { payload, stores: { app: store, map: mapStore } },
+          mapStore.activeRegion?.properties || null,
+        )
+      }
     }
 
     if (props.confirmationSource === 'process' || props.confirmationSource === 'mapClick') {

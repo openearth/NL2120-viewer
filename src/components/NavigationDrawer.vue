@@ -53,6 +53,8 @@
     </div>
   </v-navigation-drawer>
 
+  <user-selections-overview />
+
   <sub-menu
     v-for="step in config.steps"
     :key="step.id"
@@ -77,6 +79,7 @@
   import { useAppStore } from '@/stores/app'
   import { useMapStore } from '@/stores/map'
   import SubMenu from '@/components/SubMenu.vue'
+  import UserSelectionsOverview from '@/components/UserSelectionsOverview.vue'
   import config from '@/config/workflow.json'
   import { executeProcessConfig } from '@/lib/ogc-process/execute-config'
 
@@ -138,7 +141,8 @@
 
 <style scoped>
 .custom-navigation-drawer {
-  max-height: calc(100% - 50px * 2);
+  /* 24px bottom matches UserSelectionsOverview default bottom inset */
+  max-height: calc(100% - 50px - 24px);
   margin-top: 50px;
   margin-left: 10px;
   border-radius: 28px;
